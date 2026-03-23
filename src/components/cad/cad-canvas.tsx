@@ -1143,7 +1143,8 @@ export function CadCanvas({ state, dispatch }: Props) {
         {regionHover && (() => {
           const color = regionHover.isToggle ? "#f43f5e" : "var(--primary)";
           const { centroid: c, area } = regionHover;
-          const label = `${area.toFixed(2)} in\u00B2`;
+          const areaLabel = `${area.toFixed(2)} in\u00B2`;
+          const actionLabel = regionHover.isToggle ? "click to toggle \u00B1" : "click to add region";
           return (
             <g style={{ pointerEvents: "none" }}>
               <path
@@ -1159,8 +1160,11 @@ export function CadCanvas({ state, dispatch }: Props) {
               <line x1={c.x - 0.22} y1={c.y} x2={c.x + 0.22} y2={c.y} stroke={color} strokeWidth={0.03} />
               <line x1={c.x} y1={c.y - 0.22} x2={c.x} y2={c.y + 0.22} stroke={color} strokeWidth={0.03} />
               {/* Area label */}
-              <rect x={c.x - label.length * 0.1} y={c.y + 0.3} width={label.length * 0.2} height={0.4} rx={0.06} fill="var(--surface)" fillOpacity={0.85} stroke={color} strokeWidth={0.02} />
-              <text x={c.x} y={c.y + 0.58} fill={color} fontSize={0.28} fontWeight="bold" textAnchor="middle" fontFamily="var(--font-mono)">{label}</text>
+              <rect x={c.x - areaLabel.length * 0.1} y={c.y + 0.3} width={areaLabel.length * 0.2} height={0.4} rx={0.06} fill="var(--surface)" fillOpacity={0.85} stroke={color} strokeWidth={0.02} />
+              <text x={c.x} y={c.y + 0.58} fill={color} fontSize={0.28} fontWeight="bold" textAnchor="middle" fontFamily="var(--font-mono)">{areaLabel}</text>
+              {/* Action hint */}
+              <rect x={c.x - actionLabel.length * 0.08} y={c.y + 0.78} width={actionLabel.length * 0.16} height={0.35} rx={0.06} fill={color} fillOpacity={0.12} />
+              <text x={c.x} y={c.y + 1.02} fill={color} fontSize={0.22} textAnchor="middle" fontFamily="var(--font-mono)" opacity={0.7}>{actionLabel}</text>
             </g>
           );
         })()}
