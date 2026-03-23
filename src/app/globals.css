@@ -35,10 +35,10 @@
   --sidebar-hover: #f0f0f0;
   --sidebar-active: #eaeaea;
   --muted: #666666;
-  --svg-fill: #e8e8e8;
-  --svg-stroke: #999;
-  --svg-dim: #666;
-  --svg-axis: #ccc;
+  --svg-fill: #e0e0e0;
+  --svg-stroke: #555;
+  --svg-dim: #444;
+  --svg-axis: #d5d5d5;
   --svg-inner: #ffffff;
 }
 
@@ -57,8 +57,8 @@
   --sidebar-active: #1c1c1c;
   --muted: #888888;
   --svg-fill: #2a2a2a;
-  --svg-stroke: #555;
-  --svg-dim: #888;
+  --svg-stroke: #8a8a8a;
+  --svg-dim: #999;
   --svg-axis: #333;
   --svg-inner: #171717;
 }

@@ -70,6 +70,7 @@ export function CadCanvas({ state, dispatch }: Props) {
   const [cursorPos, setCursorPos] = useState<Point2D>({ x: 0, y: 0 });
   const [previewPt, setPreviewPt] = useState<Point2D | null>(null);
   const [snapPt, setSnapPt] = useState<Point2D | null>(null);
+  const [snapType, setSnapType] = useState<"grid" | "node" | null>(null);
 
   // Pan state
   const isPanning = useRef(false);
@@ -159,12 +160,13 @@ export function CadCanvas({ state, dispatch }: Props) {
   const snapRadius = 0.5;
 
   const doSnap = useCallback(
-    (raw: Point2D): Point2D => {
+    (raw: Point2D): { pt: Point2D; type: "grid" | "node" | null } => {
       // First try entity snap points
       const nearest = findNearestSnap(raw, entities, snapRadius);
-      if (nearest) return nearest;
+      if (nearest) return { pt: nearest, type: "node" };
       // Fall back to grid snap
-      return grid.snap ? snapToGrid(raw, grid.size) : raw;
+      if (grid.snap) return { pt: snapToGrid(raw, grid.size), type: "grid" };
+      return { pt: raw, type: null };
     },
     [entities, grid]
   );
@@ -234,7 +236,7 @@ export function CadCanvas({ state, dispatch }: Props) {
       if (editingDim) return;
 
       const world = screenToWorld(e.clientX, e.clientY);
-      const pt = doSnap(world);
+      const { pt } = doSnap(world);
 
       // Right-click on handle → toggle lock
       if (e.button === 2) {
@@ -390,9 +392,10 @@ export function CadCanvas({ state, dispatch }: Props) {
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
       const world = screenToWorld(e.clientX, e.clientY);
-      const snapped = doSnap(world);
-      setCursorPos(snapped);
-      setPreviewPt(snapped);
+      const snapResult = doSnap(world);
+      setCursorPos(snapResult.pt);
+      setPreviewPt(snapResult.pt);
+      setSnapType(snapResult.type);
 
       // Track screen position for tooltip
       const svgRect = svgRef.current?.getBoundingClientRect();
@@ -400,7 +403,7 @@ export function CadCanvas({ state, dispatch }: Props) {
         setMouseScreenPos({ x: e.clientX - svgRect.left, y: e.clientY - svgRect.top });
       }
 
-      // Compute snap indicator
+      // Compute snap indicator point
       const nearest = findNearestSnap(world, entities, snapRadius);
       setSnapPt(nearest && distance(world, nearest) < snapRadius ? nearest : null);
 
@@ -410,7 +413,7 @@ export function CadCanvas({ state, dispatch }: Props) {
           type: "RESIZE_HANDLE",
           id: resizeEntityId.current,
           handleIndex: resizeHandleIndex.current,
-          newPos: snapped,
+          newPos: snapResult.pt,
         });
         return;
       }
@@ -688,12 +691,17 @@ export function CadCanvas({ state, dispatch }: Props) {
           </g>
         ))}
 
-        {/* Active snap highlight (snapped-to point) */}
-        {snapPt && activeTool !== "select" && activeTool !== "pan" && (
+        {/* Active snap highlight */}
+        {snapType === "node" && snapPt && activeTool !== "select" && activeTool !== "pan" && (
           <g>
-            <circle cx={snapPt.x} cy={snapPt.y} r={0.15} fill="none" stroke="var(--primary)" strokeWidth={0.04} />
-            <line x1={snapPt.x - 0.12} y1={snapPt.y} x2={snapPt.x + 0.12} y2={snapPt.y} stroke="var(--primary)" strokeWidth={0.03} />
-            <line x1={snapPt.x} y1={snapPt.y - 0.12} x2={snapPt.x} y2={snapPt.y + 0.12} stroke="var(--primary)" strokeWidth={0.03} />
+            <circle cx={snapPt.x} cy={snapPt.y} r={0.18} fill="none" stroke="var(--primary)" strokeWidth={0.05} />
+            <line x1={snapPt.x - 0.15} y1={snapPt.y} x2={snapPt.x + 0.15} y2={snapPt.y} stroke="var(--primary)" strokeWidth={0.04} />
+            <line x1={snapPt.x} y1={snapPt.y - 0.15} x2={snapPt.x} y2={snapPt.y + 0.15} stroke="var(--primary)" strokeWidth={0.04} />
+          </g>
+        )}
+        {snapType === "grid" && activeTool !== "select" && activeTool !== "pan" && (
+          <g>
+            <circle cx={cursorPos.x} cy={cursorPos.y} r={0.1} fill="#38bdf8" fillOpacity={0.5} stroke="#38bdf8" strokeWidth={0.03} />
           </g>
         )}
 
@@ -751,37 +759,52 @@ export function CadCanvas({ state, dispatch }: Props) {
         )}
       </svg>
 
-      {/* Cursor tooltip — shows live measurements while drawing */}
-      {drawState && drawState.points.length >= 1 && previewPt && !showTooltipInput && activeTool !== "select" && activeTool !== "pan" && (
+      {/* Cursor tooltip — shows snap state + live measurements */}
+      {!showTooltipInput && activeTool !== "pan" && (
         <div
-          className="pointer-events-none absolute z-10 rounded bg-surface/90 border border-border px-2 py-1 text-[10px] font-mono text-foreground backdrop-blur-sm"
+          className="pointer-events-none absolute z-10 rounded bg-surface/90 border border-border px-2 py-1 text-[10px] font-mono text-foreground backdrop-blur-sm whitespace-nowrap"
           style={{ left: mouseScreenPos.x + 16, top: mouseScreenPos.y + 16 }}
         >
-          {(() => {
+          {/* Snap indicator */}
+          {snapType === "node" && (
+            <span className="text-primary mr-1.5">● Node</span>
+          )}
+          {snapType === "grid" && (
+            <span className="text-sky-400 mr-1.5">▦ Grid</span>
+          )}
+          {!snapType && (
+            <span className="text-muted/40 mr-1.5">○ Free</span>
+          )}
+
+          {/* Coordinates */}
+          <span className="text-muted">{cursorPos.x.toFixed(2)}, {cursorPos.y.toFixed(2)}</span>
+
+          {/* Measurement when drawing */}
+          {drawState && drawState.points.length >= 1 && previewPt && activeTool !== "select" && (() => {
             const start = drawState.points[0];
             if (activeTool === "line" || activeTool === "dimension") {
               const d = distance(start, previewPt);
               const ang = Math.atan2(previewPt.y - start.y, previewPt.x - start.x) * 180 / Math.PI;
-              return <><span className="text-primary">{d.toFixed(2)}</span> <span className="text-muted">@ {ang.toFixed(1)}°</span> <span className="text-muted/50 ml-1">Tab to type</span></>;
+              return <><span className="text-border mx-1">|</span><span className="text-primary">{d.toFixed(2)}</span> <span className="text-muted">@ {ang.toFixed(1)}°</span> <span className="text-muted/40 ml-1">Tab</span></>;
             }
             if (activeTool === "rectangle") {
               const w = Math.abs(previewPt.x - start.x);
               const h = Math.abs(previewPt.y - start.y);
-              return <><span className="text-primary">{w.toFixed(2)}</span><span className="text-muted"> × </span><span className="text-primary">{h.toFixed(2)}</span> <span className="text-muted/50 ml-1">Tab to type</span></>;
+              return <><span className="text-border mx-1">|</span><span className="text-primary">{w.toFixed(2)}</span><span className="text-muted">×</span><span className="text-primary">{h.toFixed(2)}</span> <span className="text-muted/40 ml-1">Tab</span></>;
             }
             if (activeTool === "circle") {
               const r = distance(start, previewPt);
-              return <><span className="text-muted">r=</span><span className="text-primary">{r.toFixed(2)}</span> <span className="text-muted/50 ml-1">Tab to type</span></>;
+              return <><span className="text-border mx-1">|</span><span className="text-muted">r=</span><span className="text-primary">{r.toFixed(2)}</span> <span className="text-muted/40 ml-1">Tab</span></>;
             }
             if (activeTool === "ellipse") {
               const rx = Math.abs(previewPt.x - start.x);
               const ry = Math.abs(previewPt.y - start.y);
-              return <><span className="text-muted">rx=</span><span className="text-primary">{rx.toFixed(2)}</span> <span className="text-muted"> ry=</span><span className="text-primary">{ry.toFixed(2)}</span> <span className="text-muted/50 ml-1">Tab</span></>;
+              return <><span className="text-border mx-1">|</span><span className="text-primary">{rx.toFixed(2)}</span><span className="text-muted">×</span><span className="text-primary">{ry.toFixed(2)}</span> <span className="text-muted/40 ml-1">Tab</span></>;
             }
-            if (activeTool === "polyline" && drawState.points.length >= 1) {
+            if (activeTool === "polyline") {
               const lastPt = drawState.points[drawState.points.length - 1];
               const d = distance(lastPt, previewPt);
-              return <><span className="text-primary">{d.toFixed(2)}</span> <span className="text-muted/50 ml-1">Tab to type</span></>;
+              return <><span className="text-border mx-1">|</span><span className="text-primary">{d.toFixed(2)}</span> <span className="text-muted/40 ml-1">Tab</span></>;
             }
             return null;
           })()}
@@ -820,7 +843,8 @@ export function CadCanvas({ state, dispatch }: Props) {
       {/* Coordinate display */}
       <div className="absolute bottom-2 left-2 rounded bg-surface/80 px-2 py-0.5 text-[10px] font-mono text-muted backdrop-blur-sm">
         {cursorPos.x.toFixed(2)}, {cursorPos.y.toFixed(2)}
-        {snapPt && <span className="ml-1 text-primary">• snap</span>}
+        {snapType === "node" && <span className="ml-1.5 text-primary">● Node</span>}
+        {snapType === "grid" && <span className="ml-1.5 text-sky-400">▦ Grid</span>}
       </div>
 
       {/* Active tool hint */}

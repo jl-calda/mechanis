@@ -10,8 +10,8 @@ interface Props {
 
 const SEL_COLOR = "var(--primary)";
 const LOCK_COLOR = "var(--danger)";
-const STROKE_W = 0.06;
-const SEL_STROKE_W = 0.08;
+const STROKE_W = 0.08;
+const SEL_STROKE_W = 0.1;
 const HANDLE_R = 0.12;
 
 function Handle({ x, y, index, entityId, isLocked }: { x: number; y: number; index: number; entityId: string; isLocked: boolean }) {
