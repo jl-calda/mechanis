@@ -3,7 +3,8 @@
 import { useRef, useCallback, useState, useMemo, useEffect } from "react";
 import type { CadState, Point2D, CadEntity } from "@/types/cad";
 import type { CadAction } from "@/lib/cad-reducer";
-import { snapToGrid, generateId, distance, midpoint, pointNearSegment, pointNearCircle, pointNearEllipse, getEntitySnapPoints, getEntityBounds, trimEntityAtPoint, getTrimPreview, getEntitySegments, computeFillet, getFilletPreview } from "@/lib/cad/geometry";
+import { snapToGrid, generateId, distance, midpoint, pointNearSegment, pointNearCircle, pointNearEllipse, getEntitySnapPoints, getEntityBounds, trimEntityAtPoint, getTrimPreview, getEntitySegments, hitTestEdge, computeFilletFromEdges, getFilletPreviewFromEdges } from "@/lib/cad/geometry";
+import type { FilletEdge } from "@/lib/cad/geometry";
 import { manualPickRegion } from "@/lib/cad/region-detect";
 import { CadGrid } from "./cad-grid";
 import { CadEntityRenderer } from "./cad-entity-renderer";
@@ -79,14 +80,14 @@ export function CadCanvas({ state, dispatch }: Props) {
   } | null>(null);
 
   // Fillet state
-  const [filletFirstId, setFilletFirstId] = useState<string | null>(null);
+  const [filletFirstEdge, setFilletFirstEdge] = useState<FilletEdge | null>(null);
   const [filletRadius, setFilletRadius] = useState(0.25);
   const [filletPreview, setFilletPreview] = useState<{
     arcPoints: Point2D[];
     tangentA: Point2D;
     tangentB: Point2D;
   } | null>(null);
-  const [filletHoverId, setFilletHoverId] = useState<string | null>(null);
+  const [filletHoverEdge, setFilletHoverEdge] = useState<FilletEdge | null>(null);
 
   // Pan state
   const isPanning = useRef(false);
@@ -313,28 +314,26 @@ export function CadCanvas({ state, dispatch }: Props) {
         return;
       }
 
-      // Fillet mode — two-click: first line, then second line
+      // Fillet mode — two-click: first edge, then second edge
       if (activeTool === "fillet") {
-        const hitId = hitTest(world);
-        if (hitId) {
-          const entity = entities.find((ent) => ent.id === hitId);
-          if (entity && entity.type === "line") {
-            if (!filletFirstId) {
-              // First click — select first line
-              setFilletFirstId(hitId);
-            } else if (hitId !== filletFirstId) {
-              // Second click — compute fillet
-              const firstEntity = entities.find((ent) => ent.id === filletFirstId);
-              if (firstEntity && firstEntity.type === "line") {
-                const result = computeFillet(firstEntity, entity, filletRadius);
-                if (result) {
-                  dispatch({ type: "REPLACE_ENTITIES", ids: result.removedIds, newEntities: result.newEntities });
-                }
+        const tol = 0.3 / viewport.zoom;
+        const edge = hitTestEdge(world, entities, tol);
+        if (edge) {
+          if (!filletFirstEdge) {
+            // First click — select first edge
+            setFilletFirstEdge(edge);
+          } else {
+            // Second click — compute fillet (allow same entity if different edge)
+            const sameEdge = edge.entityId === filletFirstEdge.entityId && edge.segmentIndex === filletFirstEdge.segmentIndex;
+            if (!sameEdge) {
+              const result = computeFilletFromEdges(filletFirstEdge, edge, entities, filletRadius);
+              if (result) {
+                dispatch({ type: "REPLACE_ENTITIES", ids: result.removedIds, newEntities: result.newEntities });
               }
-              setFilletFirstId(null);
-              setFilletPreview(null);
-              setFilletHoverId(null);
             }
+            setFilletFirstEdge(null);
+            setFilletPreview(null);
+            setFilletHoverEdge(null);
           }
         }
         return;
@@ -467,7 +466,7 @@ export function CadCanvas({ state, dispatch }: Props) {
         return;
       }
     },
-    [activeTool, drawState, screenToWorld, doSnap, hitTest, dispatch, entities, viewport, selectedIds, editingDim, filletFirstId, filletRadius]
+    [activeTool, drawState, screenToWorld, doSnap, hitTest, dispatch, entities, viewport, selectedIds, editingDim, filletFirstEdge, filletRadius]
   );
 
   const handlePointerMove = useCallback(
@@ -547,37 +546,32 @@ export function CadCanvas({ state, dispatch }: Props) {
 
       // Fillet hover preview
       if (activeTool === "fillet") {
-        const hitId = hitTest(world);
-        if (hitId) {
-          const entity = entities.find((ent) => ent.id === hitId);
-          if (entity && entity.type === "line") {
-            setFilletHoverId(hitId);
-            if (filletFirstId && hitId !== filletFirstId) {
-              const firstEntity = entities.find((ent) => ent.id === filletFirstId);
-              if (firstEntity && firstEntity.type === "line") {
-                const preview = getFilletPreview(firstEntity, entity, filletRadius);
-                setFilletPreview(preview);
-              } else {
-                setFilletPreview(null);
-              }
+        const tol = 0.3 / viewport.zoom;
+        const edge = hitTestEdge(world, entities, tol);
+        if (edge) {
+          setFilletHoverEdge(edge);
+          if (filletFirstEdge) {
+            const sameEdge = edge.entityId === filletFirstEdge.entityId && edge.segmentIndex === filletFirstEdge.segmentIndex;
+            if (!sameEdge) {
+              const preview = getFilletPreviewFromEdges(filletFirstEdge, edge, filletRadius);
+              setFilletPreview(preview);
             } else {
               setFilletPreview(null);
             }
           } else {
-            setFilletHoverId(null);
             setFilletPreview(null);
           }
         } else {
-          setFilletHoverId(null);
+          setFilletHoverEdge(null);
           setFilletPreview(null);
         }
       } else {
-        if (filletHoverId) setFilletHoverId(null);
+        if (filletHoverEdge) setFilletHoverEdge(null);
         if (filletPreview) setFilletPreview(null);
-        if (filletFirstId) setFilletFirstId(null);
+        if (filletFirstEdge) setFilletFirstEdge(null);
       }
     },
-    [screenToWorld, doSnap, viewport, dispatch, grid, entities, activeTool, hitTest, trimHover, filletFirstId, filletRadius, filletHoverId, filletPreview]
+    [screenToWorld, doSnap, viewport, dispatch, grid, entities, activeTool, hitTest, trimHover, filletFirstEdge, filletRadius, filletHoverEdge, filletPreview]
   );
 
   const handlePointerUp = useCallback(() => {
@@ -734,8 +728,8 @@ export function CadCanvas({ state, dispatch }: Props) {
       }
 
       if (e.key === "Escape") {
-        if (activeTool === "fillet" && filletFirstId) {
-          setFilletFirstId(null);
+        if (activeTool === "fillet" && filletFirstEdge) {
+          setFilletFirstEdge(null);
           setFilletPreview(null);
         } else {
           dispatch({ type: "SET_DRAW_STATE", points: null });
@@ -761,7 +755,7 @@ export function CadCanvas({ state, dispatch }: Props) {
         if (e.key === "-" || e.key === "_") setFilletRadius((r) => Math.max(0.05, Math.round((r - 0.05) * 100) / 100));
       }
     },
-    [activeTool, drawState, selectedIds, dispatch, editingDim, showTooltipInput, filletFirstId]
+    [activeTool, drawState, selectedIds, dispatch, editingDim, showTooltipInput, filletFirstEdge]
   );
 
   // Compute viewBox
@@ -777,7 +771,7 @@ export function CadCanvas({ state, dispatch }: Props) {
   if (activeTool === "pan") cursorStyle = "grab";
   else if (activeTool === "select") cursorStyle = isDragging.current ? "grabbing" : "default";
   else if (activeTool === "trim") cursorStyle = trimHover ? "pointer" : "crosshair";
-  else if (activeTool === "fillet") cursorStyle = filletHoverId ? "pointer" : "crosshair";
+  else if (activeTool === "fillet") cursorStyle = filletHoverEdge ? "pointer" : "crosshair";
 
   // Collect nearby snap points for rendering (only the visible ones near cursor)
   const visibleSnaps = useMemo(() => {
@@ -822,10 +816,10 @@ export function CadCanvas({ state, dispatch }: Props) {
           <CadEntityRenderer
             key={e.id}
             entity={e}
-            selected={selectedIds.includes(e.id) || (activeTool === "fillet" && e.id === filletFirstId)}
+            selected={selectedIds.includes(e.id) || (activeTool === "fillet" && filletFirstEdge?.entityId === e.id)}
             trimHover={
               (activeTool === "trim" && trimHover?.entityId === e.id) ||
-              (activeTool === "fillet" && e.id === filletHoverId && e.id !== filletFirstId)
+              (activeTool === "fillet" && filletHoverEdge?.entityId === e.id && filletFirstEdge?.entityId !== e.id)
             }
           />
         ))}
@@ -1091,7 +1085,7 @@ export function CadCanvas({ state, dispatch }: Props) {
               : activeTool === "trim"
                 ? "Hover to highlight · Click to trim at intersections"
                 : activeTool === "fillet"
-                  ? !filletFirstId ? `Click first line · r=${filletRadius}` : "Click second line to fillet"
+                  ? !filletFirstEdge ? `Click first edge · r=${filletRadius} · +/- to adjust` : "Click second edge to fillet"
                   : activeTool === "region-pick"
                     ? "Click inside a closed shape to detect region"
                     : drawState ? "Click to set second point · Esc to cancel" : "Click to start drawing · Esc to cancel · F to zoom fit"}

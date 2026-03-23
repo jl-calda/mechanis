@@ -528,148 +528,79 @@ function lineLineIntersection(
   return { x: a1.x + t * dx1, y: a1.y + t * dy1 };
 }
 
-/**
- * Compute fillet between two line entities.
- * Returns the modified lines (shortened) and an arc polyline,
- * or null if a fillet can't be computed.
- */
-export function computeFillet(
-  lineA: import("@/types/cad").LineEntity,
-  lineB: import("@/types/cad").LineEntity,
-  radius: number
-): { newEntities: import("@/types/cad").CadEntity[]; removedIds: string[] } | null {
-  // Find intersection of the two lines (extended infinitely)
-  const corner = lineLineIntersection(lineA.start, lineA.end, lineB.start, lineB.end);
-  if (!corner) return null; // parallel lines
-
-  // Determine which endpoint of each line is closest to the corner
-  const dAs = distance(lineA.start, corner);
-  const dAe = distance(lineA.end, corner);
-  const dBs = distance(lineB.start, corner);
-  const dBe = distance(lineB.end, corner);
-
-  // Direction vectors pointing away from corner
-  const aEndNear = dAe < dAs;
-  const aPt = aEndNear ? lineA.start : lineA.end; // far point
-  const bEndNear = dBe < dBs;
-  const bPt = bEndNear ? lineB.start : lineB.end; // far point
-
-  // Unit vectors from corner along each line
-  const lenA = distance(corner, aPt);
-  const lenB = distance(corner, bPt);
-  if (lenA < 0.01 || lenB < 0.01) return null;
-
-  const uA = { x: (aPt.x - corner.x) / lenA, y: (aPt.y - corner.y) / lenA };
-  const uB = { x: (bPt.x - corner.x) / lenB, y: (bPt.y - corner.y) / lenB };
-
-  // Half-angle between the two lines
-  const dot = uA.x * uB.x + uA.y * uB.y;
-  const halfAngle = Math.acos(Math.max(-1, Math.min(1, dot))) / 2;
-  if (Math.abs(Math.sin(halfAngle)) < 1e-10) return null; // lines are coincident
-
-  // Distance from corner to tangent points
-  const tangentDist = radius / Math.tan(halfAngle);
-  if (tangentDist > lenA * 0.99 || tangentDist > lenB * 0.99) return null; // radius too large
-
-  // Tangent points on each line
-  const tA = { x: corner.x + uA.x * tangentDist, y: corner.y + uA.y * tangentDist };
-  const tB = { x: corner.x + uB.x * tangentDist, y: corner.y + uB.y * tangentDist };
-
-  // Arc center: move from corner along bisector
-  const bisector = { x: uA.x + uB.x, y: uA.y + uB.y };
-  const bisLen = Math.sqrt(bisector.x ** 2 + bisector.y ** 2);
-  if (bisLen < 1e-10) return null;
-  const centerDist = radius / Math.sin(halfAngle);
-  const center = {
-    x: corner.x + (bisector.x / bisLen) * centerDist,
-    y: corner.y + (bisector.y / bisLen) * centerDist,
-  };
-
-  // Generate arc points from tA to tB around center
-  const startAngle = Math.atan2(tA.y - center.y, tA.x - center.x);
-  const endAngle = Math.atan2(tB.y - center.y, tB.x - center.x);
-
-  // Determine arc sweep direction (should be the short arc)
-  let sweep = endAngle - startAngle;
-  if (sweep > Math.PI) sweep -= 2 * Math.PI;
-  if (sweep < -Math.PI) sweep += 2 * Math.PI;
-
-  const numPts = Math.max(8, Math.round(Math.abs(sweep) / (Math.PI / 16)));
-  const arcPoints: Point2D[] = [];
-  for (let i = 0; i <= numPts; i++) {
-    const t = i / numPts;
-    const angle = startAngle + sweep * t;
-    arcPoints.push({
-      x: center.x + radius * Math.cos(angle),
-      y: center.y + radius * Math.sin(angle),
-    });
-  }
-
-  const base = { stroke: lineA.stroke, strokeWidth: lineA.strokeWidth, locked: false, thickness: 0 };
-
-  // Shortened line A: from far point to tangent point
-  const newLineA: import("@/types/cad").LineEntity = {
-    ...base,
-    id: generateId(),
-    type: "line",
-    start: aPt,
-    end: tA,
-    thickness: lineA.thickness,
-  };
-
-  // Shortened line B: from far point to tangent point
-  const newLineB: import("@/types/cad").LineEntity = {
-    ...base,
-    id: generateId(),
-    type: "line",
-    start: bPt,
-    end: tB,
-    thickness: lineB.thickness,
-  };
-
-  // Arc as a polyline
-  const arc: import("@/types/cad").PolylineEntity = {
-    ...base,
-    id: generateId(),
-    type: "polyline",
-    points: arcPoints,
-    closed: false,
-    thickness: 0,
-  };
-
-  return {
-    newEntities: [newLineA, arc, newLineB],
-    removedIds: [lineA.id, lineB.id],
-  };
+/** An edge identified within an entity: the entity ID and the segment index. */
+export interface FilletEdge {
+  entityId: string;
+  segmentIndex: number;
+  start: Point2D;
+  end: Point2D;
 }
 
 /**
- * Preview fillet: returns the arc points and tangent points for rendering.
+ * Hit-test for a specific edge of an entity closest to `pt`.
+ * Works with lines, rectangles, and polylines.
  */
-export function getFilletPreview(
-  lineA: import("@/types/cad").LineEntity,
-  lineB: import("@/types/cad").LineEntity,
+export function hitTestEdge(
+  pt: Point2D,
+  entities: import("@/types/cad").CadEntity[],
+  tol: number
+): FilletEdge | null {
+  let bestDist = tol;
+  let bestEdge: FilletEdge | null = null;
+  for (let i = entities.length - 1; i >= 0; i--) {
+    const e = entities[i];
+    const segs = getEntitySegments(e);
+    for (let j = 0; j < segs.length; j++) {
+      if (pointNearSegment(pt, segs[j][0], segs[j][1], bestDist)) {
+        // Compute actual distance to segment for ranking
+        const dx = segs[j][1].x - segs[j][0].x, dy = segs[j][1].y - segs[j][0].y;
+        const len2 = dx * dx + dy * dy;
+        let d: number;
+        if (len2 < 1e-10) {
+          d = distance(pt, segs[j][0]);
+        } else {
+          const t = Math.max(0, Math.min(1, ((pt.x - segs[j][0].x) * dx + (pt.y - segs[j][0].y) * dy) / len2));
+          const proj = { x: segs[j][0].x + t * dx, y: segs[j][0].y + t * dy };
+          d = distance(pt, proj);
+        }
+        if (d < bestDist) {
+          bestDist = d;
+          bestEdge = { entityId: e.id, segmentIndex: j, start: segs[j][0], end: segs[j][1] };
+        }
+      }
+    }
+  }
+  return bestEdge;
+}
+
+/**
+ * Core fillet computation between two segments.
+ * Returns arc points, tangent points, and shortened segment endpoints.
+ */
+function computeFilletGeometry(
+  segA: { start: Point2D; end: Point2D },
+  segB: { start: Point2D; end: Point2D },
   radius: number
-): { arcPoints: Point2D[]; tangentA: Point2D; tangentB: Point2D; corner: Point2D } | null {
-  const corner = lineLineIntersection(lineA.start, lineA.end, lineB.start, lineB.end);
+): { arcPoints: Point2D[]; tangentA: Point2D; tangentB: Point2D; corner: Point2D; farA: Point2D; farB: Point2D } | null {
+  const corner = lineLineIntersection(segA.start, segA.end, segB.start, segB.end);
   if (!corner) return null;
 
-  const dAs = distance(lineA.start, corner);
-  const dAe = distance(lineA.end, corner);
-  const dBs = distance(lineB.start, corner);
-  const dBe = distance(lineB.end, corner);
+  const dAs = distance(segA.start, corner);
+  const dAe = distance(segA.end, corner);
+  const dBs = distance(segB.start, corner);
+  const dBe = distance(segB.end, corner);
 
   const aEndNear = dAe < dAs;
-  const aPt = aEndNear ? lineA.start : lineA.end;
+  const farA = aEndNear ? segA.start : segA.end;
   const bEndNear = dBe < dBs;
-  const bPt = bEndNear ? lineB.start : lineB.end;
+  const farB = bEndNear ? segB.start : segB.end;
 
-  const lenA = distance(corner, aPt);
-  const lenB = distance(corner, bPt);
+  const lenA = distance(corner, farA);
+  const lenB = distance(corner, farB);
   if (lenA < 0.01 || lenB < 0.01) return null;
 
-  const uA = { x: (aPt.x - corner.x) / lenA, y: (aPt.y - corner.y) / lenA };
-  const uB = { x: (bPt.x - corner.x) / lenB, y: (bPt.y - corner.y) / lenB };
+  const uA = { x: (farA.x - corner.x) / lenA, y: (farA.y - corner.y) / lenA };
+  const uB = { x: (farB.x - corner.x) / lenB, y: (farB.y - corner.y) / lenB };
 
   const dot = uA.x * uB.x + uA.y * uB.y;
   const halfAngle = Math.acos(Math.max(-1, Math.min(1, dot))) / 2;
@@ -707,5 +638,138 @@ export function getFilletPreview(
     });
   }
 
-  return { arcPoints, tangentA: tA, tangentB: tB, corner };
+  return { arcPoints, tangentA: tA, tangentB: tB, corner, farA, farB };
+}
+
+/**
+ * Decompose an entity into individual line entities, preserving visual properties.
+ * Used when a fillet needs to break apart a rectangle or polyline.
+ */
+function decomposeToLines(
+  entity: import("@/types/cad").CadEntity
+): import("@/types/cad").LineEntity[] {
+  const segs = getEntitySegments(entity);
+  const base = { stroke: entity.stroke, strokeWidth: entity.strokeWidth, locked: false };
+  return segs.map((seg) => ({
+    ...base,
+    id: generateId(),
+    type: "line" as const,
+    start: seg[0],
+    end: seg[1],
+    thickness: 0,
+  }));
+}
+
+/**
+ * Compute fillet between two edges (which may come from lines, rectangles, or polylines).
+ * Returns the new entities and the IDs of entities to remove.
+ */
+export function computeFilletFromEdges(
+  edgeA: FilletEdge,
+  edgeB: FilletEdge,
+  entities: import("@/types/cad").CadEntity[],
+  radius: number
+): { newEntities: import("@/types/cad").CadEntity[]; removedIds: string[] } | null {
+  const geom = computeFilletGeometry(edgeA, edgeB, radius);
+  if (!geom) return null;
+
+  const entityA = entities.find((e) => e.id === edgeA.entityId);
+  const entityB = entities.find((e) => e.id === edgeB.entityId);
+  if (!entityA || !entityB) return null;
+
+  const base = { stroke: entityA.stroke, strokeWidth: entityA.strokeWidth, locked: false };
+
+  // Arc polyline
+  const arc: import("@/types/cad").PolylineEntity = {
+    ...base,
+    id: generateId(),
+    type: "polyline",
+    points: geom.arcPoints,
+    closed: false,
+    thickness: 0,
+  };
+
+  const removedIds: string[] = [];
+  const resultEntities: import("@/types/cad").CadEntity[] = [];
+
+  // Process entity A
+  if (edgeA.entityId === edgeB.entityId) {
+    // Both edges from the same entity (e.g. two sides of a rectangle)
+    const lines = decomposeToLines(entityA);
+    removedIds.push(entityA.id);
+    for (let i = 0; i < lines.length; i++) {
+      if (i === edgeA.segmentIndex) {
+        // Shorten to tangent point A
+        lines[i] = { ...lines[i], start: geom.farA, end: geom.tangentA };
+      } else if (i === edgeB.segmentIndex) {
+        // Shorten to tangent point B
+        lines[i] = { ...lines[i], start: geom.farB, end: geom.tangentB };
+      }
+      resultEntities.push(lines[i]);
+    }
+    resultEntities.push(arc);
+  } else {
+    // Edges from different entities
+    // Process entity A
+    if (entityA.type === "line") {
+      removedIds.push(entityA.id);
+      resultEntities.push({
+        ...base,
+        id: generateId(),
+        type: "line",
+        start: geom.farA,
+        end: geom.tangentA,
+        thickness: entityA.thickness,
+      });
+    } else {
+      // Decompose rectangle/polyline, shorten the specific edge
+      const lines = decomposeToLines(entityA);
+      removedIds.push(entityA.id);
+      for (let i = 0; i < lines.length; i++) {
+        if (i === edgeA.segmentIndex) {
+          lines[i] = { ...lines[i], start: geom.farA, end: geom.tangentA };
+        }
+        resultEntities.push(lines[i]);
+      }
+    }
+
+    // Process entity B
+    if (entityB.type === "line") {
+      removedIds.push(entityB.id);
+      resultEntities.push({
+        ...base,
+        id: generateId(),
+        type: "line",
+        start: geom.farB,
+        end: geom.tangentB,
+        thickness: entityB.thickness,
+      });
+    } else {
+      const lines = decomposeToLines(entityB);
+      removedIds.push(entityB.id);
+      for (let i = 0; i < lines.length; i++) {
+        if (i === edgeB.segmentIndex) {
+          lines[i] = { ...lines[i], start: geom.farB, end: geom.tangentB };
+        }
+        resultEntities.push(lines[i]);
+      }
+    }
+
+    resultEntities.push(arc);
+  }
+
+  return { newEntities: resultEntities, removedIds };
+}
+
+/**
+ * Preview fillet between two edges.
+ */
+export function getFilletPreviewFromEdges(
+  edgeA: FilletEdge,
+  edgeB: FilletEdge,
+  radius: number
+): { arcPoints: Point2D[]; tangentA: Point2D; tangentB: Point2D; corner: Point2D } | null {
+  const geom = computeFilletGeometry(edgeA, edgeB, radius);
+  if (!geom) return null;
+  return { arcPoints: geom.arcPoints, tangentA: geom.tangentA, tangentB: geom.tangentB, corner: geom.corner };
 }
