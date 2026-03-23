@@ -202,7 +202,7 @@ export function CadCanvas({ state, dispatch }: Props) {
 
   // Hit test
   const hitTest = useCallback(
-    (p: Point2D): string | null => {
+    (p: Point2D, edgeOnly?: boolean): string | null => {
       const tol = 0.5 / viewport.zoom;
       for (let i = entities.length - 1; i >= 0; i--) {
         const e = entities[i];
@@ -224,7 +224,7 @@ export function CadCanvas({ state, dispatch }: Props) {
               if (pointNearSegment(p, corners[j], corners[(j + 1) % 4], tol))
                 return e.id;
             }
-            if (p.x >= e.origin.x && p.x <= e.origin.x + e.width && p.y >= e.origin.y && p.y <= e.origin.y + e.height)
+            if (!edgeOnly && p.x >= e.origin.x && p.x <= e.origin.x + e.width && p.y >= e.origin.y && p.y <= e.origin.y + e.height)
               return e.id;
             break;
           }
@@ -236,7 +236,7 @@ export function CadCanvas({ state, dispatch }: Props) {
               return e.id;
             break;
           case "circle":
-            if (pointNearCircle(p, e.center, e.radius, tol) || distance(p, e.center) < e.radius) return e.id;
+            if (pointNearCircle(p, e.center, e.radius, tol) || (!edgeOnly && distance(p, e.center) < e.radius)) return e.id;
             break;
           case "ellipse":
             if (pointNearEllipse(p, e.center, e.rx, e.ry, tol)) return e.id;
@@ -299,9 +299,9 @@ export function CadCanvas({ state, dispatch }: Props) {
         return;
       }
 
-      // Trim mode — works on lines, rectangles, polylines
+      // Trim mode — works on lines, rectangles, polylines, circles
       if (activeTool === "trim") {
-        const hitId = hitTest(world);
+        const hitId = hitTest(world, true);
         if (hitId) {
           const entity = entities.find((ent) => ent.id === hitId);
           if (entity) {
@@ -554,7 +554,7 @@ export function CadCanvas({ state, dispatch }: Props) {
 
       // Trim hover preview
       if (activeTool === "trim") {
-        const hitId = hitTest(world);
+        const hitId = hitTest(world, true);
         if (hitId) {
           const entity = entities.find((ent) => ent.id === hitId);
           if (entity) {
