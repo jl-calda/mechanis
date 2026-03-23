@@ -9,6 +9,7 @@ import { manualPickRegion } from "@/lib/cad/region-detect";
 import { CadGrid } from "./cad-grid";
 import { CadEntityRenderer } from "./cad-entity-renderer";
 import { CadRegionOverlay } from "./cad-region-overlay";
+import { CadEntityPopup } from "./cad-entity-popup";
 
 interface Props {
   state: CadState;
@@ -1583,6 +1584,27 @@ export function CadCanvas({ state, dispatch }: Props) {
           />
         </div>
       )}
+
+      {/* Floating property popup for selected entity */}
+      {activeTool === "select" && selectedIds.length === 1 && !drawState && !editingDim && (() => {
+        const ent = entities.find((e) => e.id === selectedIds[0]);
+        if (!ent) return null;
+        const bounds = getEntityBounds(ent);
+        if (!bounds) return null;
+        const midX = (bounds.minX + bounds.maxX) / 2;
+        const midY = (bounds.minY + bounds.maxY) / 2;
+        const screenPt = worldToScreen(bounds.maxX, midY);
+        const svg = svgRef.current;
+        const rect = svg?.getBoundingClientRect();
+        return (
+          <CadEntityPopup
+            entity={ent}
+            screenPos={screenPt}
+            containerRect={{ width: rect?.width ?? 800, height: rect?.height ?? 600 }}
+            onChange={(id, changes) => dispatch({ type: "UPDATE_ENTITY", id, changes })}
+          />
+        );
+      })()}
     </div>
   );
 }
