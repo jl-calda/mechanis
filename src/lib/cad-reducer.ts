@@ -6,7 +6,7 @@ import type {
   ClosedRegion,
   Viewport,
 } from "@/types/cad";
-import { getEntityBounds } from "@/lib/cad/geometry";
+import { getEntityBounds, recomputeFilletRadius } from "@/lib/cad/geometry";
 
 export type CadAction =
   | { type: "SET_TOOL"; tool: ToolType }
@@ -75,6 +75,38 @@ export function cadReducer(state: CadState, action: CadAction): CadState {
     }
 
     case "UPDATE_ENTITY": {
+      // Check if this is a fillet arc radius change — also update connected lines
+      const target = state.entities.find((e) => e.id === action.id);
+      if (
+        target?.type === "arc" &&
+        target.filletLineIds &&
+        "radius" in action.changes &&
+        action.changes.radius !== target.radius
+      ) {
+        const [lineAId, lineBId] = target.filletLineIds;
+        const lineA = state.entities.find((e) => e.id === lineAId);
+        const lineB = state.entities.find((e) => e.id === lineBId);
+        if (lineA?.type === "line" && lineB?.type === "line") {
+          const result = recomputeFilletRadius(
+            target,
+            lineA,
+            lineB,
+            action.changes.radius as number
+          );
+          if (result) {
+            const newEntities = state.entities.map((e) => {
+              if (e.id === action.id)
+                return { ...e, ...action.changes, ...result.arc } as CadEntity;
+              if (e.id === lineAId)
+                return { ...e, ...result.lineA } as CadEntity;
+              if (e.id === lineBId)
+                return { ...e, ...result.lineB } as CadEntity;
+              return e;
+            });
+            return pushHistory(state, newEntities);
+          }
+        }
+      }
       const newEntities = state.entities.map((e) =>
         e.id === action.id ? ({ ...e, ...action.changes } as CadEntity) : e
       );
@@ -176,6 +208,37 @@ export function cadReducer(state: CadState, action: CadAction): CadState {
       // Block if handle is locked
       const target = state.entities.find((e) => e.id === id);
       if (target?.lockedHandles?.includes(handleIndex)) return state;
+
+      // For fillet arcs, recompute connected lines when radius changes via handle drag
+      if (
+        target?.type === "arc" &&
+        target.filletLineIds &&
+        handleIndex !== 0 // handle 0 is center, 1/2 change radius
+      ) {
+        const newR = Math.max(
+          0.01,
+          Math.sqrt((newPos.x - target.center.x) ** 2 + (newPos.y - target.center.y) ** 2)
+        );
+        const [lineAId, lineBId] = target.filletLineIds;
+        const lineA = state.entities.find((e) => e.id === lineAId);
+        const lineB = state.entities.find((e) => e.id === lineBId);
+        if (lineA?.type === "line" && lineB?.type === "line") {
+          const result = recomputeFilletRadius(target, lineA, lineB, newR);
+          if (result) {
+            const newEntities = state.entities.map((e) => {
+              if (e.id === id)
+                return { ...e, ...result.arc } as CadEntity;
+              if (e.id === lineAId)
+                return { ...e, ...result.lineA } as CadEntity;
+              if (e.id === lineBId)
+                return { ...e, ...result.lineB } as CadEntity;
+              return e;
+            });
+            return pushHistory(state, newEntities);
+          }
+        }
+      }
+
       const newEntities = state.entities.map((e) => {
         if (e.id !== id) return e;
         switch (e.type) {

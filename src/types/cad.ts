@@ -81,6 +81,8 @@ export interface ArcEntity extends CadEntityBase {
   radius: number;
   startAngle: number; // radians
   endAngle: number;   // radians
+  /** IDs of the two lines this fillet connects (set when created via fillet tool) */
+  filletLineIds?: [string, string];
 }
 
 export type CadEntity =
