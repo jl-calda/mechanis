@@ -3,7 +3,7 @@
 import { useRef, useCallback, useState, useMemo, useEffect } from "react";
 import type { CadState, Point2D, CadEntity } from "@/types/cad";
 import type { CadAction } from "@/lib/cad-reducer";
-import { snapToGrid, generateId, distance, midpoint, pointNearSegment, pointNearCircle, pointNearEllipse, getEntitySnapPoints, getEntityBounds, trimLineAtPoint } from "@/lib/cad/geometry";
+import { snapToGrid, generateId, distance, midpoint, pointNearSegment, pointNearCircle, pointNearEllipse, getEntitySnapPoints, getEntityBounds, trimEntityAtPoint } from "@/lib/cad/geometry";
 import { manualPickRegion } from "@/lib/cad/region-detect";
 import { CadGrid } from "./cad-grid";
 import { CadEntityRenderer } from "./cad-entity-renderer";
@@ -90,6 +90,12 @@ export function CadCanvas({ state, dispatch }: Props) {
   const [selRect, setSelRect] = useState<{ start: Point2D; current: Point2D } | null>(null);
   const isSelecting = useRef(false);
   const selStartWorld = useRef<Point2D>({ x: 0, y: 0 });
+
+  // Cursor tooltip input state
+  const [tooltipInput, setTooltipInput] = useState<string>("");
+  const [showTooltipInput, setShowTooltipInput] = useState(false);
+  const tooltipInputRef = useRef<HTMLInputElement>(null);
+  const [mouseScreenPos, setMouseScreenPos] = useState({ x: 0, y: 0 });
 
   // Editable dimension state
   const [editingDim, setEditingDim] = useState<{
@@ -255,14 +261,16 @@ export function CadCanvas({ state, dispatch }: Props) {
         return;
       }
 
-      // Trim mode
+      // Trim mode — works on lines, rectangles, polylines
       if (activeTool === "trim") {
         const hitId = hitTest(world);
         if (hitId) {
           const entity = entities.find((ent) => ent.id === hitId);
-          if (entity?.type === "line") {
-            const newEntities = trimLineAtPoint(entity, world, entities);
-            dispatch({ type: "REPLACE_ENTITY", id: hitId, newEntities });
+          if (entity) {
+            const result = trimEntityAtPoint(entity, world, entities);
+            if (result !== null) {
+              dispatch({ type: "REPLACE_ENTITY", id: hitId, newEntities: result });
+            }
           }
         }
         return;
@@ -385,6 +393,12 @@ export function CadCanvas({ state, dispatch }: Props) {
       const snapped = doSnap(world);
       setCursorPos(snapped);
       setPreviewPt(snapped);
+
+      // Track screen position for tooltip
+      const svgRect = svgRef.current?.getBoundingClientRect();
+      if (svgRect) {
+        setMouseScreenPos({ x: e.clientX - svgRect.left, y: e.clientY - svgRect.top });
+      }
 
       // Compute snap indicator
       const nearest = findNearestSnap(world, entities, snapRadius);
@@ -525,9 +539,63 @@ export function CadCanvas({ state, dispatch }: Props) {
     setEditingDim(null);
   }, [editingDim, entities, dispatch]);
 
+  // Handle tooltip input commit: parse value and apply to current drawing
+  const handleTooltipCommit = useCallback(() => {
+    if (!drawState || !tooltipInput) { setShowTooltipInput(false); setTooltipInput(""); return; }
+    const val = parseFloat(tooltipInput);
+    if (isNaN(val) || val <= 0) { setShowTooltipInput(false); setTooltipInput(""); return; }
+    const start = drawState.points[0];
+
+    if (activeTool === "line" || activeTool === "dimension") {
+      // Use cursor direction to determine endpoint
+      const dx = cursorPos.x - start.x;
+      const dy = cursorPos.y - start.y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      const ux = len > 0 ? dx / len : 1;
+      const uy = len > 0 ? dy / len : 0;
+      const endPt = { x: start.x + ux * val, y: start.y + uy * val };
+
+      if (activeTool === "line") {
+        dispatch({ type: "ADD_ENTITY", entity: { id: generateId(), type: "line", start, end: endPt, thickness: 0, stroke: "", strokeWidth: 1, locked: false } });
+      } else {
+        dispatch({ type: "ADD_ENTITY", entity: { id: generateId(), type: "dimension", startPt: start, endPt, offset: 0.8, labelOverride: null, stroke: "", strokeWidth: 1, locked: false } });
+      }
+      dispatch({ type: "SET_DRAW_STATE", points: null });
+    } else if (activeTool === "rectangle") {
+      // Parse as "w,h" or single value for square
+      const parts = tooltipInput.split(/[,x×]/);
+      const w = parseFloat(parts[0]) || val;
+      const h = parts.length > 1 ? (parseFloat(parts[1]) || val) : val;
+      dispatch({ type: "ADD_ENTITY", entity: { id: generateId(), type: "rectangle", origin: start, width: w, height: h, stroke: "", strokeWidth: 1, locked: false } });
+      dispatch({ type: "SET_DRAW_STATE", points: null });
+    } else if (activeTool === "circle") {
+      dispatch({ type: "ADD_ENTITY", entity: { id: generateId(), type: "circle", center: start, radius: val, stroke: "", strokeWidth: 1, locked: false } });
+      dispatch({ type: "SET_DRAW_STATE", points: null });
+    } else if (activeTool === "ellipse") {
+      const parts = tooltipInput.split(/[,x×]/);
+      const rx = parseFloat(parts[0]) || val;
+      const ry = parts.length > 1 ? (parseFloat(parts[1]) || val) : val;
+      dispatch({ type: "ADD_ENTITY", entity: { id: generateId(), type: "ellipse", center: start, rx, ry, stroke: "", strokeWidth: 1, locked: false } });
+      dispatch({ type: "SET_DRAW_STATE", points: null });
+    }
+
+    setShowTooltipInput(false);
+    setTooltipInput("");
+  }, [drawState, tooltipInput, activeTool, cursorPos, dispatch]);
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (editingDim) return;
+      if (editingDim || showTooltipInput) return;
+
+      // Tab opens dimension input when drawing
+      if (e.key === "Tab" && drawState && drawState.points.length >= 1) {
+        e.preventDefault();
+        setShowTooltipInput(true);
+        setTooltipInput("");
+        setTimeout(() => tooltipInputRef.current?.focus(), 10);
+        return;
+      }
+
       if (e.key === "Escape") {
         dispatch({ type: "SET_DRAW_STATE", points: null });
         dispatch({ type: "SET_TOOL", tool: "select" });
@@ -546,7 +614,7 @@ export function CadCanvas({ state, dispatch }: Props) {
         dispatch({ type: "SET_DRAW_STATE", points: null });
       }
     },
-    [activeTool, drawState, selectedIds, dispatch, editingDim]
+    [activeTool, drawState, selectedIds, dispatch, editingDim, showTooltipInput]
   );
 
   // Compute viewBox
@@ -683,6 +751,72 @@ export function CadCanvas({ state, dispatch }: Props) {
         )}
       </svg>
 
+      {/* Cursor tooltip — shows live measurements while drawing */}
+      {drawState && drawState.points.length >= 1 && previewPt && !showTooltipInput && activeTool !== "select" && activeTool !== "pan" && (
+        <div
+          className="pointer-events-none absolute z-10 rounded bg-surface/90 border border-border px-2 py-1 text-[10px] font-mono text-foreground backdrop-blur-sm"
+          style={{ left: mouseScreenPos.x + 16, top: mouseScreenPos.y + 16 }}
+        >
+          {(() => {
+            const start = drawState.points[0];
+            if (activeTool === "line" || activeTool === "dimension") {
+              const d = distance(start, previewPt);
+              const ang = Math.atan2(previewPt.y - start.y, previewPt.x - start.x) * 180 / Math.PI;
+              return <><span className="text-primary">{d.toFixed(2)}</span> <span className="text-muted">@ {ang.toFixed(1)}°</span> <span className="text-muted/50 ml-1">Tab to type</span></>;
+            }
+            if (activeTool === "rectangle") {
+              const w = Math.abs(previewPt.x - start.x);
+              const h = Math.abs(previewPt.y - start.y);
+              return <><span className="text-primary">{w.toFixed(2)}</span><span className="text-muted"> × </span><span className="text-primary">{h.toFixed(2)}</span> <span className="text-muted/50 ml-1">Tab to type</span></>;
+            }
+            if (activeTool === "circle") {
+              const r = distance(start, previewPt);
+              return <><span className="text-muted">r=</span><span className="text-primary">{r.toFixed(2)}</span> <span className="text-muted/50 ml-1">Tab to type</span></>;
+            }
+            if (activeTool === "ellipse") {
+              const rx = Math.abs(previewPt.x - start.x);
+              const ry = Math.abs(previewPt.y - start.y);
+              return <><span className="text-muted">rx=</span><span className="text-primary">{rx.toFixed(2)}</span> <span className="text-muted"> ry=</span><span className="text-primary">{ry.toFixed(2)}</span> <span className="text-muted/50 ml-1">Tab</span></>;
+            }
+            if (activeTool === "polyline" && drawState.points.length >= 1) {
+              const lastPt = drawState.points[drawState.points.length - 1];
+              const d = distance(lastPt, previewPt);
+              return <><span className="text-primary">{d.toFixed(2)}</span> <span className="text-muted/50 ml-1">Tab to type</span></>;
+            }
+            return null;
+          })()}
+        </div>
+      )}
+
+      {/* Tooltip dimension input — appears when Tab is pressed during drawing */}
+      {showTooltipInput && drawState && (
+        <div
+          className="absolute z-20"
+          style={{ left: mouseScreenPos.x + 16, top: mouseScreenPos.y + 16 }}
+        >
+          <div className="flex items-center gap-1 rounded bg-surface border border-primary px-1.5 py-1 shadow-lg">
+            <span className="text-[10px] text-muted">
+              {activeTool === "rectangle" ? "w,h:" : activeTool === "ellipse" ? "rx,ry:" : activeTool === "circle" ? "r:" : "len:"}
+            </span>
+            <input
+              ref={tooltipInputRef}
+              type="text"
+              value={tooltipInput}
+              onChange={(e) => setTooltipInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleTooltipCommit();
+                if (e.key === "Escape") { setShowTooltipInput(false); setTooltipInput(""); }
+                e.stopPropagation();
+              }}
+              onBlur={() => { setShowTooltipInput(false); setTooltipInput(""); }}
+              placeholder={activeTool === "rectangle" || activeTool === "ellipse" ? "5,3" : "5.00"}
+              className="w-16 bg-transparent text-xs font-mono text-foreground placeholder:text-muted/40 focus:outline-none"
+              autoFocus
+            />
+          </div>
+        </div>
+      )}
+
       {/* Coordinate display */}
       <div className="absolute bottom-2 left-2 rounded bg-surface/80 px-2 py-0.5 text-[10px] font-mono text-muted backdrop-blur-sm">
         {cursorPos.x.toFixed(2)}, {cursorPos.y.toFixed(2)}
@@ -698,7 +832,7 @@ export function CadCanvas({ state, dispatch }: Props) {
             : activeTool === "dimension"
               ? drawState ? "Click second point to place dimension" : "Click first point for dimension"
               : activeTool === "trim"
-                ? "Click a line to trim at intersections"
+                ? "Click a line, rectangle, or polyline to trim at intersections"
                 : activeTool === "region-pick"
                   ? "Click inside a closed shape to detect region"
                   : drawState ? "Click to set second point · Esc to cancel" : "Click to start drawing · Esc to cancel · F to zoom fit"}

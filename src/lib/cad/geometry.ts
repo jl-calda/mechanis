@@ -165,33 +165,31 @@ export function getEntitySegments(e: import("@/types/cad").CadEntity): [Point2D,
 }
 
 /**
- * Trim a line entity at the nearest intersection with other entities.
- * Given a click point on the line, finds intersection points on both sides,
- * and trims to the nearest ones, removing the segment under the click.
- * Returns replacement entities (0, 1, or 2 lines).
+ * Trim a single segment at intersections with other entities.
+ * Returns 0, 1, or 2 line segments (the parts outside the click point).
  */
-export function trimLineAtPoint(
-  line: import("@/types/cad").LineEntity,
+function trimSegmentAtPoint(
+  segStart: Point2D,
+  segEnd: Point2D,
   clickPt: Point2D,
-  allEntities: import("@/types/cad").CadEntity[]
+  allEntities: import("@/types/cad").CadEntity[],
+  sourceId: string,
+  base: { stroke: string; strokeWidth: number; locked: boolean; thickness: number }
 ): import("@/types/cad").CadEntity[] {
-  const seg: [Point2D, Point2D] = [line.start, line.end];
-  const dx = seg[1].x - seg[0].x;
-  const dy = seg[1].y - seg[0].y;
+  const dx = segEnd.x - segStart.x;
+  const dy = segEnd.y - segStart.y;
   const len = Math.sqrt(dx * dx + dy * dy);
   if (len < 1e-10) return [];
 
-  // Project click onto line to get parameter t (0..1)
-  const clickT = ((clickPt.x - seg[0].x) * dx + (clickPt.y - seg[0].y) * dy) / (len * len);
+  const clickT = ((clickPt.x - segStart.x) * dx + (clickPt.y - segStart.y) * dy) / (len * len);
 
-  // Find all intersections with other entities
   const intersections: { t: number; pt: Point2D }[] = [];
   for (const other of allEntities) {
-    if (other.id === line.id) continue;
+    if (other.id === sourceId) continue;
     for (const otherSeg of getEntitySegments(other)) {
-      const ip = segmentIntersection(seg[0], seg[1], otherSeg[0], otherSeg[1]);
+      const ip = segmentIntersection(segStart, segEnd, otherSeg[0], otherSeg[1]);
       if (ip) {
-        const t = ((ip.x - seg[0].x) * dx + (ip.y - seg[0].y) * dy) / (len * len);
+        const t = ((ip.x - segStart.x) * dx + (ip.y - segStart.y) * dy) / (len * len);
         if (t > 0.001 && t < 0.999) {
           intersections.push({ t, pt: ip });
         }
@@ -199,14 +197,10 @@ export function trimLineAtPoint(
     }
   }
 
-  if (intersections.length === 0) {
-    // No intersections: delete the whole line
-    return [];
-  }
+  if (intersections.length === 0) return [];
 
   intersections.sort((a, b) => a.t - b.t);
 
-  // Find the intersection just before and just after the click
   let before: { t: number; pt: Point2D } | null = null;
   let after: { t: number; pt: Point2D } | null = null;
   for (const ix of intersections) {
@@ -215,15 +209,74 @@ export function trimLineAtPoint(
   }
 
   const result: import("@/types/cad").CadEntity[] = [];
-  const base = { stroke: line.stroke, strokeWidth: line.strokeWidth, locked: line.locked, thickness: line.thickness };
-
-  // Keep segment from start to `before`
   if (before) {
-    result.push({ ...base, id: generateId(), type: "line", start: line.start, end: before.pt });
+    result.push({ ...base, id: generateId(), type: "line", start: segStart, end: before.pt });
   }
-  // Keep segment from `after` to end
   if (after) {
-    result.push({ ...base, id: generateId(), type: "line", start: after.pt, end: line.end });
+    result.push({ ...base, id: generateId(), type: "line", start: after.pt, end: segEnd });
+  }
+  return result;
+}
+
+/**
+ * Trim a line entity at the nearest intersection with other entities.
+ */
+export function trimLineAtPoint(
+  line: import("@/types/cad").LineEntity,
+  clickPt: Point2D,
+  allEntities: import("@/types/cad").CadEntity[]
+): import("@/types/cad").CadEntity[] {
+  const base = { stroke: line.stroke, strokeWidth: line.strokeWidth, locked: line.locked, thickness: line.thickness };
+  return trimSegmentAtPoint(line.start, line.end, clickPt, allEntities, line.id, base);
+}
+
+/**
+ * Trim any entity that has segments (line, rectangle, polyline).
+ * For rectangles/polylines, finds the clicked segment, trims it,
+ * and returns remaining segments as individual lines.
+ */
+export function trimEntityAtPoint(
+  entity: import("@/types/cad").CadEntity,
+  clickPt: Point2D,
+  allEntities: import("@/types/cad").CadEntity[]
+): import("@/types/cad").CadEntity[] | null {
+  if (entity.type === "line") {
+    return trimLineAtPoint(entity, clickPt, allEntities);
+  }
+
+  const segments = getEntitySegments(entity);
+  if (segments.length === 0) return null;
+
+  // Find which segment the click is nearest to
+  let bestIdx = 0;
+  let bestDist = Infinity;
+  for (let i = 0; i < segments.length; i++) {
+    const [a, b] = segments[i];
+    // Project click onto segment
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq === 0) continue;
+    let t = ((clickPt.x - a.x) * dx + (clickPt.y - a.y) * dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+    const proj = { x: a.x + t * dx, y: a.y + t * dy };
+    const d = distance(clickPt, proj);
+    if (d < bestDist) { bestDist = d; bestIdx = i; }
+  }
+
+  const base = { stroke: entity.stroke, strokeWidth: entity.strokeWidth, locked: entity.locked, thickness: (entity as { thickness?: number }).thickness ?? 0 };
+  const result: import("@/types/cad").CadEntity[] = [];
+
+  // Convert all segments to individual lines
+  for (let i = 0; i < segments.length; i++) {
+    const [a, b] = segments[i];
+    if (i === bestIdx) {
+      // Trim this segment
+      const trimmed = trimSegmentAtPoint(a, b, clickPt, allEntities, entity.id, base);
+      result.push(...trimmed);
+    } else {
+      // Keep this segment as a line
+      result.push({ ...base, id: generateId(), type: "line", start: a, end: b });
+    }
   }
 
   return result;
