@@ -8,6 +8,7 @@ import {
   CircleDot,
   Zap,
   Database,
+  PenTool,
   Menu,
   X,
 } from "lucide-react";
@@ -20,6 +21,7 @@ const navItems = [
   { href: "/bolts", label: "Bolt Calculator", icon: CircleDot },
   { href: "/welds", label: "Weld Calculator", icon: Zap },
   { href: "/materials", label: "Materials", icon: Database },
+  { href: "/cad", label: "CAD Editor", icon: PenTool },
 ];
 
 export function Sidebar() {

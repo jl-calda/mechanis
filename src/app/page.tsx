@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Ruler, CircleDot, Zap, Database } from "lucide-react";
+import { Ruler, CircleDot, Zap, Database, PenTool } from "lucide-react";
 
 const tools = [
   {
@@ -33,6 +33,14 @@ const tools = [
       "Searchable database of structural steel grades. A36, A992, A572, A500, and more with full mechanical properties.",
     icon: Database,
     color: "bg-violet-500/10 text-violet-400",
+  },
+  {
+    href: "/cad",
+    title: "CAD Editor",
+    description:
+      "Draw custom cross-sections, bolt layouts, and weld configurations. Compute section properties from arbitrary shapes.",
+    icon: PenTool,
+    color: "bg-pink-500/10 text-pink-400",
   },
 ];
 
