@@ -198,9 +198,11 @@ export function getEntitySegments(e: import("@/types/cad").CadEntity): [Point2D,
 
 /** Convert an arc to a series of points for approximation */
 export function arcToPoints(center: Point2D, radius: number, startAngle: number, endAngle: number, numPts: number = 16): Point2D[] {
+  // Always sweep counterclockwise (positive direction) from startAngle to endAngle
   let sweep = endAngle - startAngle;
-  if (sweep > Math.PI) sweep -= 2 * Math.PI;
-  if (sweep < -Math.PI) sweep += 2 * Math.PI;
+  while (sweep < 0) sweep += 2 * Math.PI;
+  while (sweep > 2 * Math.PI) sweep -= 2 * Math.PI;
+  if (sweep === 0) sweep = 2 * Math.PI; // full circle edge case
   const pts: Point2D[] = [];
   for (let i = 0; i <= numPts; i++) {
     const t = i / numPts;
@@ -853,11 +855,21 @@ function computeFilletGeometry(
     y: corner.y + (bisector.y / bisLen) * centerDist,
   };
 
-  const startAngle = Math.atan2(tA.y - center.y, tA.x - center.x);
-  const endAngle = Math.atan2(tB.y - center.y, tB.x - center.x);
-  let sweep = endAngle - startAngle;
+  let filletStart = Math.atan2(tA.y - center.y, tA.x - center.x);
+  let filletEnd = Math.atan2(tB.y - center.y, tB.x - center.x);
+  // Ensure CCW sweep (positive direction) is the short arc
+  let sweep = filletEnd - filletStart;
   if (sweep > Math.PI) sweep -= 2 * Math.PI;
   if (sweep < -Math.PI) sweep += 2 * Math.PI;
+  // If sweep is negative (CW), swap start/end so CCW sweep is the short path
+  if (sweep < 0) {
+    const tmp = filletStart;
+    filletStart = filletEnd;
+    filletEnd = tmp;
+    sweep = -sweep;
+  }
+  const startAngle = filletStart;
+  const endAngle = filletEnd;
 
   const numPts = Math.max(8, Math.round(Math.abs(sweep) / (Math.PI / 16)));
   const arcPoints: Point2D[] = [];

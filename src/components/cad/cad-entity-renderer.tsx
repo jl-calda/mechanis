@@ -242,12 +242,13 @@ export function CadEntityRenderer({ entity, selected, trimHover }: Props) {
 
     case "arc": {
       const { center, radius, startAngle, endAngle } = entity;
-      // Compute sweep (always go from startAngle to endAngle in the shorter direction)
+      // Always sweep counterclockwise (positive direction) from startAngle to endAngle
       let sweep = endAngle - startAngle;
-      if (sweep > Math.PI) sweep -= 2 * Math.PI;
-      if (sweep < -Math.PI) sweep += 2 * Math.PI;
-      const largeArc = Math.abs(sweep) > Math.PI ? 1 : 0;
-      const sweepFlag = sweep > 0 ? 1 : 0;
+      while (sweep < 0) sweep += 2 * Math.PI;
+      while (sweep > 2 * Math.PI) sweep -= 2 * Math.PI;
+      if (sweep === 0) sweep = 2 * Math.PI;
+      const largeArc = sweep > Math.PI ? 1 : 0;
+      const sweepFlag = 1; // always CCW
       const sx = center.x + radius * Math.cos(startAngle);
       const sy = center.y + radius * Math.sin(startAngle);
       const ex = center.x + radius * Math.cos(endAngle);
