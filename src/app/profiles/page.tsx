@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import type { ProfileType } from "@/types/profile";
+import type { ProfileType, ProfileStandard } from "@/types/profile";
 import { profiles } from "@/data/profiles";
 import { ProfileForm } from "@/components/profiles/profile-form";
 import { ProfileSvg } from "@/components/profiles/profile-svg";
@@ -13,6 +13,7 @@ type Mode = "standard" | "custom";
 
 export default function ProfilesPage() {
   const [mode, setMode] = useState<Mode>("standard");
+  const [selectedStandard, setSelectedStandard] = useState<ProfileStandard>("AISC");
   const [selectedType, setSelectedType] = useState<ProfileType>("W");
   const [selectedDesignation, setSelectedDesignation] = useState("W14x30");
 
@@ -35,9 +36,10 @@ export default function ProfilesPage() {
         <div className="flex items-center gap-2">
           <ProjectActions
             type="profiles"
-            getData={() => ({ mode, selectedType, selectedDesignation })}
+            getData={() => ({ mode, selectedStandard, selectedType, selectedDesignation })}
             onLoad={(data) => {
               if (data.mode) setMode(data.mode as Mode);
+              if (data.selectedStandard) setSelectedStandard(data.selectedStandard as ProfileStandard);
               if (data.selectedType) setSelectedType(data.selectedType as ProfileType);
               if (data.selectedDesignation) setSelectedDesignation(data.selectedDesignation as string);
             }}
@@ -70,8 +72,10 @@ export default function ProfilesPage() {
               Select Profile
             </h2>
             <ProfileForm
+              selectedStandard={selectedStandard}
               selectedType={selectedType}
               selectedDesignation={selectedDesignation}
+              onStandardChange={setSelectedStandard}
               onTypeChange={setSelectedType}
               onDesignationChange={setSelectedDesignation}
             />
@@ -83,6 +87,11 @@ export default function ProfilesPage() {
                   <span className="font-mono text-sm font-medium text-primary">
                     {profile.designation}
                   </span>
+                  {profile.standard === "EN" && (
+                    <span className="ml-2 text-[10px] text-muted bg-surface-alt px-1.5 py-0.5 rounded">
+                      EN {profile.type === "CHS" || profile.type === "SHS" || profile.type === "RHS" ? "10219" : "10162"}
+                    </span>
+                  )}
                 </div>
                 <ProfileSvg profile={profile} width={400} height={400} />
               </div>
