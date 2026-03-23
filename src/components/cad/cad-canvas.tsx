@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useCallback, useState } from "react";
-import type { CadState, Point2D, ToolType, CadEntity } from "@/types/cad";
+import type { CadState, Point2D, CadEntity } from "@/types/cad";
 import type { CadAction } from "@/lib/cad-reducer";
 import { snapToGrid, generateId, distance, pointNearSegment, pointNearCircle, pointNearEllipse } from "@/lib/cad/geometry";
 import { manualPickRegion } from "@/lib/cad/region-detect";
@@ -14,25 +14,28 @@ interface Props {
   dispatch: React.Dispatch<CadAction>;
 }
 
-function defaultEntity(type: string): Partial<CadEntity> {
-  return {
-    stroke: "",
-    strokeWidth: 1,
-    locked: false,
-  };
-}
-
 export function CadCanvas({ state, dispatch }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [cursorPos, setCursorPos] = useState<Point2D>({ x: 0, y: 0 });
   const [previewPt, setPreviewPt] = useState<Point2D | null>(null);
+
+  // Pan state
   const isPanning = useRef(false);
-  const panStart = useRef<{ x: number; y: number; panX: number; panY: number }>({
-    x: 0,
-    y: 0,
-    panX: 0,
-    panY: 0,
-  });
+  const panStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
+
+  // Drag-to-move state
+  const isDragging = useRef(false);
+  const dragStart = useRef<Point2D>({ x: 0, y: 0 });
+  const dragEntityIds = useRef<string[]>([]);
+  const dragCommitted = useRef(false);
+
+  // Editable dimension state
+  const [editingDim, setEditingDim] = useState<{
+    id: string;
+    value: string;
+    screenX: number;
+    screenY: number;
+  } | null>(null);
 
   const { viewport, grid, entities, selectedIds, activeTool, drawState, regions } = state;
 
@@ -53,6 +56,23 @@ export function CadCanvas({ state, dispatch }: Props) {
     [viewport]
   );
 
+  // Convert world coords to screen coords (for input overlay)
+  const worldToScreen = useCallback(
+    (wx: number, wy: number): { x: number; y: number } => {
+      const svg = svgRef.current;
+      if (!svg) return { x: 0, y: 0 };
+      const rect = svg.getBoundingClientRect();
+      const viewW = rect.width / viewport.zoom;
+      const viewH = rect.height / viewport.zoom;
+      const viewX = -viewport.panX / viewport.zoom;
+      const viewY = -viewport.panY / viewport.zoom;
+      const sx = ((wx - viewX) / viewW) * rect.width;
+      const sy = ((wy - viewY) / viewH) * rect.height;
+      return { x: sx, y: sy };
+    },
+    [viewport]
+  );
+
   const snap = useCallback(
     (p: Point2D): Point2D => {
       return grid.snap ? snapToGrid(p, grid.size) : p;
@@ -64,7 +84,6 @@ export function CadCanvas({ state, dispatch }: Props) {
   const hitTest = useCallback(
     (p: Point2D): string | null => {
       const tol = 0.3 / viewport.zoom;
-      // Reverse iterate for top-most entity
       for (let i = entities.length - 1; i >= 0; i--) {
         const e = entities[i];
         switch (e.type) {
@@ -85,6 +104,14 @@ export function CadCanvas({ state, dispatch }: Props) {
               if (pointNearSegment(p, corners[j], corners[(j + 1) % 4], tol))
                 return e.id;
             }
+            // Also hit test the fill area
+            if (
+              p.x >= e.origin.x &&
+              p.x <= e.origin.x + e.width &&
+              p.y >= e.origin.y &&
+              p.y <= e.origin.y + e.height
+            )
+              return e.id;
             break;
           }
           case "polyline":
@@ -93,23 +120,30 @@ export function CadCanvas({ state, dispatch }: Props) {
                 return e.id;
             }
             if (e.closed && e.points.length >= 3) {
-              if (
-                pointNearSegment(
-                  p,
-                  e.points[e.points.length - 1],
-                  e.points[0],
-                  tol
-                )
-              )
+              if (pointNearSegment(p, e.points[e.points.length - 1], e.points[0], tol))
                 return e.id;
             }
             break;
           case "circle":
             if (pointNearCircle(p, e.center, e.radius, tol)) return e.id;
+            if (distance(p, e.center) < e.radius) return e.id;
             break;
           case "ellipse":
             if (pointNearEllipse(p, e.center, e.rx, e.ry, tol)) return e.id;
             break;
+          case "dimension": {
+            // Hit test the dimension line
+            const dx = e.endPt.x - e.startPt.x;
+            const dy = e.endPt.y - e.startPt.y;
+            const len = distance(e.startPt, e.endPt);
+            if (len < 0.001) break;
+            const px = -dy / len;
+            const py = dx / len;
+            const ds = { x: e.startPt.x + px * e.offset, y: e.startPt.y + py * e.offset };
+            const de = { x: e.endPt.x + px * e.offset, y: e.endPt.y + py * e.offset };
+            if (pointNearSegment(p, ds, de, tol * 2)) return e.id;
+            break;
+          }
         }
       }
       return null;
@@ -119,6 +153,8 @@ export function CadCanvas({ state, dispatch }: Props) {
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
+      if (editingDim) return; // don't interact while editing
+
       const world = screenToWorld(e.clientX, e.clientY);
       const pt = snap(world);
 
@@ -135,15 +171,26 @@ export function CadCanvas({ state, dispatch }: Props) {
         return;
       }
 
-      // Select mode
+      // Select mode — with drag-to-move
       if (activeTool === "select") {
         const hitId = hitTest(world);
         if (hitId) {
-          if (e.shiftKey) {
-            dispatch({ type: "TOGGLE_SELECT", id: hitId });
-          } else {
-            dispatch({ type: "SELECT", ids: [hitId] });
+          // If not already selected, select it first
+          if (!selectedIds.includes(hitId)) {
+            if (e.shiftKey) {
+              dispatch({ type: "TOGGLE_SELECT", id: hitId });
+            } else {
+              dispatch({ type: "SELECT", ids: [hitId] });
+            }
           }
+          // Begin drag
+          isDragging.current = true;
+          dragCommitted.current = false;
+          dragStart.current = { x: world.x, y: world.y };
+          dragEntityIds.current = selectedIds.includes(hitId)
+            ? [...selectedIds]
+            : [hitId];
+          (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
         } else {
           dispatch({ type: "CLEAR_SELECTION" });
         }
@@ -164,7 +211,6 @@ export function CadCanvas({ state, dispatch }: Props) {
         dispatch({
           type: "ADD_ENTITY",
           entity: {
-            ...defaultEntity("point"),
             id: generateId(),
             type: "point",
             position: pt,
@@ -203,16 +249,14 @@ export function CadCanvas({ state, dispatch }: Props) {
           dispatch({ type: "SET_DRAW_STATE", points: [pt] });
         } else {
           const origin = drawState.points[0];
-          const w = pt.x - origin.x;
-          const h = pt.y - origin.y;
           dispatch({
             type: "ADD_ENTITY",
             entity: {
               id: generateId(),
               type: "rectangle",
               origin: { x: Math.min(origin.x, pt.x), y: Math.min(origin.y, pt.y) },
-              width: Math.abs(w),
-              height: Math.abs(h),
+              width: Math.abs(pt.x - origin.x),
+              height: Math.abs(pt.y - origin.y),
               stroke: "",
               strokeWidth: 1,
               locked: false,
@@ -239,14 +283,13 @@ export function CadCanvas({ state, dispatch }: Props) {
         if (!drawState) {
           dispatch({ type: "SET_DRAW_STATE", points: [pt] });
         } else {
-          const r = distance(drawState.points[0], pt);
           dispatch({
             type: "ADD_ENTITY",
             entity: {
               id: generateId(),
               type: "circle",
               center: drawState.points[0],
-              radius: r,
+              radius: distance(drawState.points[0], pt),
               stroke: "",
               strokeWidth: 1,
               locked: false,
@@ -279,16 +322,64 @@ export function CadCanvas({ state, dispatch }: Props) {
         }
         return;
       }
+
+      if (activeTool === "dimension") {
+        if (!drawState) {
+          dispatch({ type: "SET_DRAW_STATE", points: [pt] });
+        } else {
+          dispatch({
+            type: "ADD_ENTITY",
+            entity: {
+              id: generateId(),
+              type: "dimension",
+              startPt: drawState.points[0],
+              endPt: pt,
+              offset: 0.8,
+              labelOverride: null,
+              stroke: "",
+              strokeWidth: 1,
+              locked: false,
+            },
+          });
+          dispatch({ type: "SET_DRAW_STATE", points: null });
+        }
+        return;
+      }
     },
-    [activeTool, drawState, screenToWorld, snap, hitTest, dispatch, entities, viewport]
+    [activeTool, drawState, screenToWorld, snap, hitTest, dispatch, entities, viewport, selectedIds, editingDim]
   );
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
       const world = screenToWorld(e.clientX, e.clientY);
-      setCursorPos(snap(world));
-      setPreviewPt(snap(world));
+      const snapped = snap(world);
+      setCursorPos(snapped);
+      setPreviewPt(snapped);
 
+      // Drag-to-move
+      if (isDragging.current) {
+        const dx = world.x - dragStart.current.x;
+        const dy = world.y - dragStart.current.y;
+        // Snap delta to grid
+        const sdx = grid.snap ? Math.round(dx / grid.size) * grid.size : dx;
+        const sdy = grid.snap ? Math.round(dy / grid.size) * grid.size : dy;
+        if (Math.abs(sdx) > 0.001 || Math.abs(sdy) > 0.001) {
+          dispatch({
+            type: "MOVE_ENTITIES",
+            ids: dragEntityIds.current,
+            dx: sdx,
+            dy: sdy,
+          });
+          dragStart.current = {
+            x: dragStart.current.x + sdx,
+            y: dragStart.current.y + sdy,
+          };
+          dragCommitted.current = true;
+        }
+        return;
+      }
+
+      // Pan
       if (isPanning.current) {
         const dx = e.clientX - panStart.current.x;
         const dy = e.clientY - panStart.current.y;
@@ -302,11 +393,12 @@ export function CadCanvas({ state, dispatch }: Props) {
         });
       }
     },
-    [screenToWorld, snap, viewport, dispatch]
+    [screenToWorld, snap, viewport, dispatch, grid]
   );
 
   const handlePointerUp = useCallback(() => {
     isPanning.current = false;
+    isDragging.current = false;
   }, []);
 
   const handleWheel = useCallback(
@@ -316,34 +408,108 @@ export function CadCanvas({ state, dispatch }: Props) {
       dispatch({
         type: "ZOOM",
         delta,
-        center: { x: e.clientX - (svgRef.current?.getBoundingClientRect().left ?? 0), y: e.clientY - (svgRef.current?.getBoundingClientRect().top ?? 0) },
+        center: {
+          x: e.clientX - (svgRef.current?.getBoundingClientRect().left ?? 0),
+          y: e.clientY - (svgRef.current?.getBoundingClientRect().top ?? 0),
+        },
       });
     },
     [dispatch]
   );
 
-  const handleDoubleClick = useCallback(() => {
-    // Finish polyline on double-click
-    if (activeTool === "polyline" && drawState && drawState.points.length >= 2) {
-      dispatch({
-        type: "ADD_ENTITY",
-        entity: {
-          id: generateId(),
-          type: "polyline",
-          points: drawState.points,
-          closed: false,
-          thickness: 0,
-          stroke: "",
-          strokeWidth: 1,
-          locked: false,
-        },
-      });
-      dispatch({ type: "SET_DRAW_STATE", points: null });
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      const world = screenToWorld(e.clientX, e.clientY);
+
+      // Check if double-clicked a dimension → open edit
+      const hitId = hitTest(world);
+      if (hitId) {
+        const entity = entities.find((ent) => ent.id === hitId);
+        if (entity?.type === "dimension") {
+          const len = distance(entity.startPt, entity.endPt);
+          const label = entity.labelOverride ?? len.toFixed(2);
+          // Compute screen position of label midpoint
+          const dx = entity.endPt.x - entity.startPt.x;
+          const dy = entity.endPt.y - entity.startPt.y;
+          const dLen = distance(entity.startPt, entity.endPt);
+          const px = dLen > 0 ? -dy / dLen : 0;
+          const py = dLen > 0 ? dx / dLen : 0;
+          const mx = (entity.startPt.x + entity.endPt.x) / 2 + px * entity.offset;
+          const my = (entity.startPt.y + entity.endPt.y) / 2 + py * entity.offset;
+          const screen = worldToScreen(mx, my);
+          setEditingDim({
+            id: entity.id,
+            value: label,
+            screenX: screen.x,
+            screenY: screen.y,
+          });
+          return;
+        }
+      }
+
+      // Finish polyline on double-click
+      if (activeTool === "polyline" && drawState && drawState.points.length >= 2) {
+        dispatch({
+          type: "ADD_ENTITY",
+          entity: {
+            id: generateId(),
+            type: "polyline",
+            points: drawState.points,
+            closed: false,
+            thickness: 0,
+            stroke: "",
+            strokeWidth: 1,
+            locked: false,
+          },
+        });
+        dispatch({ type: "SET_DRAW_STATE", points: null });
+      }
+    },
+    [activeTool, drawState, dispatch, screenToWorld, worldToScreen, hitTest, entities]
+  );
+
+  const handleDimEditCommit = useCallback(() => {
+    if (!editingDim) return;
+    const entity = entities.find((e) => e.id === editingDim.id);
+    if (!entity || entity.type !== "dimension") {
+      setEditingDim(null);
+      return;
     }
-  }, [activeTool, drawState, dispatch]);
+
+    const newVal = parseFloat(editingDim.value);
+    if (isNaN(newVal) || newVal <= 0) {
+      setEditingDim(null);
+      return;
+    }
+
+    const currentLen = distance(entity.startPt, entity.endPt);
+    if (Math.abs(currentLen - newVal) < 0.001) {
+      setEditingDim(null);
+      return;
+    }
+
+    // Scale the endpoint to match new dimension value
+    const scale = newVal / currentLen;
+    const dx = entity.endPt.x - entity.startPt.x;
+    const dy = entity.endPt.y - entity.startPt.y;
+    const newEnd = {
+      x: entity.startPt.x + dx * scale,
+      y: entity.startPt.y + dy * scale,
+    };
+
+    dispatch({
+      type: "UPDATE_ENTITY",
+      id: entity.id,
+      changes: { endPt: newEnd, labelOverride: null } as never,
+    });
+
+    setEditingDim(null);
+  }, [editingDim, entities, dispatch]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      if (editingDim) return; // let input handle keys
+
       if (e.key === "Escape") {
         dispatch({ type: "SET_DRAW_STATE", points: null });
         dispatch({ type: "SET_TOOL", tool: "select" });
@@ -359,7 +525,6 @@ export function CadCanvas({ state, dispatch }: Props) {
       if (e.ctrlKey && e.key === "y") {
         dispatch({ type: "REDO" });
       }
-      // Close polyline
       if (e.key === "c" && activeTool === "polyline" && drawState && drawState.points.length >= 3) {
         dispatch({
           type: "ADD_ENTITY",
@@ -377,7 +542,7 @@ export function CadCanvas({ state, dispatch }: Props) {
         dispatch({ type: "SET_DRAW_STATE", points: null });
       }
     },
-    [activeTool, drawState, selectedIds, dispatch]
+    [activeTool, drawState, selectedIds, dispatch, editingDim]
   );
 
   // Compute viewBox
@@ -389,12 +554,10 @@ export function CadCanvas({ state, dispatch }: Props) {
   const viewX = -viewport.panX / viewport.zoom;
   const viewY = -viewport.panY / viewport.zoom;
 
-  const cursorStyle =
-    activeTool === "pan"
-      ? "grab"
-      : activeTool === "select"
-        ? "default"
-        : "crosshair";
+  // Cursor style
+  let cursorStyle = "crosshair";
+  if (activeTool === "pan") cursorStyle = "grab";
+  else if (activeTool === "select") cursorStyle = isDragging.current ? "grabbing" : "default";
 
   return (
     <div className="relative flex-1 overflow-hidden rounded-lg border border-border bg-surface">
@@ -441,8 +604,8 @@ export function CadCanvas({ state, dispatch }: Props) {
                 x2={previewPt.x}
                 y2={previewPt.y}
                 stroke="var(--primary)"
-                strokeWidth={0.04}
-                strokeDasharray="0.1 0.06"
+                strokeWidth={0.06}
+                strokeDasharray="0.12 0.08"
               />
             )}
             {activeTool === "rectangle" && drawState.points.length === 1 && (
@@ -451,10 +614,11 @@ export function CadCanvas({ state, dispatch }: Props) {
                 y={Math.min(drawState.points[0].y, previewPt.y)}
                 width={Math.abs(previewPt.x - drawState.points[0].x)}
                 height={Math.abs(previewPt.y - drawState.points[0].y)}
-                fill="none"
+                fill="var(--primary)"
+                fillOpacity={0.05}
                 stroke="var(--primary)"
-                strokeWidth={0.04}
-                strokeDasharray="0.1 0.06"
+                strokeWidth={0.06}
+                strokeDasharray="0.12 0.08"
               />
             )}
             {activeTool === "polyline" && drawState.points.length >= 1 && (
@@ -469,8 +633,8 @@ export function CadCanvas({ state, dispatch }: Props) {
                       x2={next.x}
                       y2={next.y}
                       stroke="var(--primary)"
-                      strokeWidth={0.04}
-                      strokeDasharray="0.1 0.06"
+                      strokeWidth={0.06}
+                      strokeDasharray="0.12 0.08"
                     />
                   );
                 })}
@@ -481,10 +645,11 @@ export function CadCanvas({ state, dispatch }: Props) {
                 cx={drawState.points[0].x}
                 cy={drawState.points[0].y}
                 r={distance(drawState.points[0], previewPt)}
-                fill="none"
+                fill="var(--primary)"
+                fillOpacity={0.05}
                 stroke="var(--primary)"
-                strokeWidth={0.04}
-                strokeDasharray="0.1 0.06"
+                strokeWidth={0.06}
+                strokeDasharray="0.12 0.08"
               />
             )}
             {activeTool === "ellipse" && drawState.points.length === 1 && (
@@ -493,11 +658,35 @@ export function CadCanvas({ state, dispatch }: Props) {
                 cy={drawState.points[0].y}
                 rx={Math.abs(previewPt.x - drawState.points[0].x)}
                 ry={Math.abs(previewPt.y - drawState.points[0].y)}
-                fill="none"
+                fill="var(--primary)"
+                fillOpacity={0.05}
                 stroke="var(--primary)"
-                strokeWidth={0.04}
-                strokeDasharray="0.1 0.06"
+                strokeWidth={0.06}
+                strokeDasharray="0.12 0.08"
               />
+            )}
+            {activeTool === "dimension" && drawState.points.length === 1 && (
+              <>
+                <line
+                  x1={drawState.points[0].x}
+                  y1={drawState.points[0].y}
+                  x2={previewPt.x}
+                  y2={previewPt.y}
+                  stroke="var(--svg-dim)"
+                  strokeWidth={0.03}
+                  strokeDasharray="0.1 0.06"
+                />
+                <text
+                  x={(drawState.points[0].x + previewPt.x) / 2}
+                  y={(drawState.points[0].y + previewPt.y) / 2 - 0.3}
+                  fill="var(--svg-dim)"
+                  fontSize={0.3}
+                  textAnchor="middle"
+                  fontFamily="var(--font-mono)"
+                >
+                  {distance(drawState.points[0], previewPt).toFixed(2)}
+                </text>
+              </>
             )}
           </g>
         )}
@@ -535,13 +724,44 @@ export function CadCanvas({ state, dispatch }: Props) {
         {activeTool === "polyline" && drawState
           ? "Click to add points · Double-click to finish · C to close"
           : activeTool === "select"
-            ? "Click to select · Shift+click multi-select"
-            : activeTool === "region-pick"
-              ? "Click inside a closed shape to detect region"
-              : drawState
-                ? "Click to set second point · Esc to cancel"
-                : "Click to start drawing · Esc to cancel"}
+            ? "Click to select · Drag to move · Shift+click multi-select"
+            : activeTool === "dimension"
+              ? drawState
+                ? "Click second point to place dimension"
+                : "Click first point for dimension"
+              : activeTool === "region-pick"
+                ? "Click inside a closed shape to detect region"
+                : drawState
+                  ? "Click to set second point · Esc to cancel"
+                  : "Click to start drawing · Esc to cancel"}
       </div>
+
+      {/* Editable dimension input overlay */}
+      {editingDim && (
+        <div
+          className="absolute z-10"
+          style={{
+            left: editingDim.screenX - 40,
+            top: editingDim.screenY - 14,
+          }}
+        >
+          <input
+            autoFocus
+            type="text"
+            value={editingDim.value}
+            onChange={(e) =>
+              setEditingDim({ ...editingDim, value: e.target.value })
+            }
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleDimEditCommit();
+              if (e.key === "Escape") setEditingDim(null);
+              e.stopPropagation();
+            }}
+            onBlur={handleDimEditCommit}
+            className="w-20 rounded border border-primary bg-surface px-1.5 py-0.5 text-xs font-mono text-foreground text-center focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+        </div>
+      )}
     </div>
   );
 }

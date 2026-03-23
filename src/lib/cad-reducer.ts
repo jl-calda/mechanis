@@ -23,6 +23,7 @@ export type CadAction =
   | { type: "SET_REGIONS"; regions: ClosedRegion[] }
   | { type: "ADD_REGION"; region: ClosedRegion }
   | { type: "CLEAR_REGIONS" }
+  | { type: "MOVE_ENTITIES"; ids: string[]; dx: number; dy: number }
   | { type: "UNDO" }
   | { type: "REDO" };
 
@@ -134,6 +135,41 @@ export function cadReducer(state: CadState, action: CadAction): CadState {
 
     case "CLEAR_REGIONS":
       return { ...state, regions: [] };
+
+    case "MOVE_ENTITIES": {
+      const idSet = new Set(action.ids);
+      const { dx, dy } = action;
+      const newEntities = state.entities.map((e) => {
+        if (!idSet.has(e.id)) return e;
+        switch (e.type) {
+          case "point":
+            return { ...e, position: { x: e.position.x + dx, y: e.position.y + dy } };
+          case "line":
+            return {
+              ...e,
+              start: { x: e.start.x + dx, y: e.start.y + dy },
+              end: { x: e.end.x + dx, y: e.end.y + dy },
+            };
+          case "rectangle":
+            return { ...e, origin: { x: e.origin.x + dx, y: e.origin.y + dy } };
+          case "polyline":
+            return { ...e, points: e.points.map((p) => ({ x: p.x + dx, y: p.y + dy })) };
+          case "circle":
+            return { ...e, center: { x: e.center.x + dx, y: e.center.y + dy } };
+          case "ellipse":
+            return { ...e, center: { x: e.center.x + dx, y: e.center.y + dy } };
+          case "dimension":
+            return {
+              ...e,
+              startPt: { x: e.startPt.x + dx, y: e.startPt.y + dy },
+              endPt: { x: e.endPt.x + dx, y: e.endPt.y + dy },
+            };
+          default:
+            return e;
+        }
+      });
+      return pushHistory(state, newEntities);
+    }
 
     case "UNDO": {
       if (state.historyIndex <= 0) return state;

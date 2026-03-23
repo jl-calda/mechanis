@@ -200,6 +200,41 @@ export function CadProperties({ entity, onChange }: Props) {
           </div>
         </>
       )}
+
+      {entity.type === "dimension" && (
+        <>
+          <div className="grid grid-cols-2 gap-1.5">
+            <NumField
+              label="Start X"
+              value={entity.startPt.x}
+              onChange={(x) => set({ startPt: { ...entity.startPt, x } } as never)}
+            />
+            <NumField
+              label="Start Y"
+              value={entity.startPt.y}
+              onChange={(y) => set({ startPt: { ...entity.startPt, y } } as never)}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            <NumField
+              label="End X"
+              value={entity.endPt.x}
+              onChange={(x) => set({ endPt: { ...entity.endPt, x } } as never)}
+            />
+            <NumField
+              label="End Y"
+              value={entity.endPt.y}
+              onChange={(y) => set({ endPt: { ...entity.endPt, y } } as never)}
+            />
+          </div>
+          <NumField
+            label="Offset"
+            value={entity.offset}
+            onChange={(offset) => set({ offset } as never)}
+            step={0.1}
+          />
+        </>
+      )}
     </div>
   );
 }

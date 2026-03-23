@@ -6,6 +6,7 @@ import { CadCanvas } from "@/components/cad/cad-canvas";
 import { CadToolbar } from "@/components/cad/cad-toolbar";
 import { CadProperties } from "@/components/cad/cad-properties";
 import { CadResults } from "@/components/cad/cad-results";
+import { distance } from "@/lib/cad/geometry";
 import { autoDetectRegions } from "@/lib/cad/region-detect";
 
 export default function CadPage() {
@@ -99,6 +100,8 @@ export default function CadPage() {
                   {e.type === "circle" && `r=${e.radius.toFixed(2)}`}
                   {e.type === "ellipse" &&
                     `rx=${e.rx.toFixed(2)} ry=${e.ry.toFixed(2)}`}
+                  {e.type === "dimension" &&
+                    `${e.labelOverride ?? distance(e.startPt, e.endPt).toFixed(2)}″`}
                 </button>
               ))
             )}

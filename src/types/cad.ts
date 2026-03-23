@@ -6,6 +6,7 @@ export type ToolType =
   | "polyline"
   | "circle"
   | "ellipse"
+  | "dimension"
   | "pan"
   | "region-pick";
 
@@ -63,13 +64,22 @@ export interface EllipseEntity extends CadEntityBase {
   ry: number;
 }
 
+export interface DimensionEntity extends CadEntityBase {
+  type: "dimension";
+  startPt: Point2D;
+  endPt: Point2D;
+  offset: number;
+  labelOverride: string | null;
+}
+
 export type CadEntity =
   | PointEntity
   | LineEntity
   | RectEntity
   | PolylineEntity
   | CircleEntity
-  | EllipseEntity;
+  | EllipseEntity
+  | DimensionEntity;
 
 // --- Closed region ---
 

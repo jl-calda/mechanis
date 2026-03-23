@@ -1,6 +1,7 @@
 "use client";
 
-import type { CadEntity } from "@/types/cad";
+import type { CadEntity, Point2D } from "@/types/cad";
+import { distance } from "@/lib/cad/geometry";
 
 interface Props {
   entity: CadEntity;
@@ -8,10 +9,26 @@ interface Props {
 }
 
 const SEL_COLOR = "var(--primary)";
+const STROKE_W = 0.06;
+const SEL_STROKE_W = 0.08;
+const HANDLE_R = 0.12;
+
+function Handle({ x, y }: { x: number; y: number }) {
+  return (
+    <rect
+      x={x - HANDLE_R}
+      y={y - HANDLE_R}
+      width={HANDLE_R * 2}
+      height={HANDLE_R * 2}
+      fill={SEL_COLOR}
+      stroke="none"
+    />
+  );
+}
 
 export function CadEntityRenderer({ entity, selected }: Props) {
   const stroke = selected ? SEL_COLOR : "var(--svg-stroke)";
-  const sw = entity.strokeWidth;
+  const sw = selected ? SEL_STROKE_W : STROKE_W;
 
   switch (entity.type) {
     case "point":
@@ -20,7 +37,7 @@ export function CadEntityRenderer({ entity, selected }: Props) {
           <circle
             cx={entity.position.x}
             cy={entity.position.y}
-            r={0.15}
+            r={0.2}
             fill={selected ? SEL_COLOR : "var(--svg-dim)"}
             stroke="none"
           />
@@ -28,10 +45,10 @@ export function CadEntityRenderer({ entity, selected }: Props) {
             <circle
               cx={entity.position.x}
               cy={entity.position.y}
-              r={0.3}
+              r={0.4}
               fill="none"
               stroke={SEL_COLOR}
-              strokeWidth={0.05}
+              strokeWidth={0.04}
             />
           )}
         </g>
@@ -39,29 +56,48 @@ export function CadEntityRenderer({ entity, selected }: Props) {
 
     case "line":
       return (
-        <line
-          x1={entity.start.x}
-          y1={entity.start.y}
-          x2={entity.end.x}
-          y2={entity.end.y}
-          stroke={stroke}
-          strokeWidth={entity.thickness > 0 ? entity.thickness : sw * 0.05}
-          strokeLinecap="round"
-          opacity={entity.thickness > 0 ? 0.7 : 1}
-        />
+        <g>
+          <line
+            x1={entity.start.x}
+            y1={entity.start.y}
+            x2={entity.end.x}
+            y2={entity.end.y}
+            stroke={stroke}
+            strokeWidth={entity.thickness > 0 ? Math.max(entity.thickness, sw) : sw}
+            strokeLinecap="round"
+            opacity={entity.thickness > 0 ? 0.7 : 1}
+          />
+          {selected && (
+            <>
+              <Handle x={entity.start.x} y={entity.start.y} />
+              <Handle x={entity.end.x} y={entity.end.y} />
+            </>
+          )}
+        </g>
       );
 
     case "rectangle":
       return (
-        <rect
-          x={entity.origin.x}
-          y={entity.origin.y}
-          width={entity.width}
-          height={entity.height}
-          fill="none"
-          stroke={stroke}
-          strokeWidth={sw * 0.05}
-        />
+        <g>
+          <rect
+            x={entity.origin.x}
+            y={entity.origin.y}
+            width={entity.width}
+            height={entity.height}
+            fill="var(--svg-fill)"
+            fillOpacity={0.12}
+            stroke={stroke}
+            strokeWidth={sw}
+          />
+          {selected && (
+            <>
+              <Handle x={entity.origin.x} y={entity.origin.y} />
+              <Handle x={entity.origin.x + entity.width} y={entity.origin.y} />
+              <Handle x={entity.origin.x + entity.width} y={entity.origin.y + entity.height} />
+              <Handle x={entity.origin.x} y={entity.origin.y + entity.height} />
+            </>
+          )}
+        </g>
       );
 
     case "polyline": {
@@ -69,41 +105,176 @@ export function CadEntityRenderer({ entity, selected }: Props) {
         .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
         .join(" ");
       return (
-        <path
-          d={entity.closed ? d + " Z" : d}
-          fill="none"
-          stroke={stroke}
-          strokeWidth={entity.thickness > 0 ? entity.thickness : sw * 0.05}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          opacity={entity.thickness > 0 ? 0.7 : 1}
-        />
+        <g>
+          <path
+            d={entity.closed ? d + " Z" : d}
+            fill={entity.closed ? "var(--svg-fill)" : "none"}
+            fillOpacity={entity.closed ? 0.12 : 0}
+            stroke={stroke}
+            strokeWidth={entity.thickness > 0 ? Math.max(entity.thickness, sw) : sw}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            opacity={entity.thickness > 0 ? 0.7 : 1}
+          />
+          {selected &&
+            entity.points.map((p, i) => <Handle key={i} x={p.x} y={p.y} />)}
+        </g>
       );
     }
 
     case "circle":
       return (
-        <circle
-          cx={entity.center.x}
-          cy={entity.center.y}
-          r={entity.radius}
-          fill="none"
-          stroke={stroke}
-          strokeWidth={sw * 0.05}
-        />
+        <g>
+          <circle
+            cx={entity.center.x}
+            cy={entity.center.y}
+            r={entity.radius}
+            fill="var(--svg-fill)"
+            fillOpacity={0.12}
+            stroke={stroke}
+            strokeWidth={sw}
+          />
+          {selected && (
+            <>
+              <Handle x={entity.center.x} y={entity.center.y} />
+              <Handle x={entity.center.x + entity.radius} y={entity.center.y} />
+              <Handle x={entity.center.x} y={entity.center.y - entity.radius} />
+            </>
+          )}
+        </g>
       );
 
     case "ellipse":
       return (
-        <ellipse
-          cx={entity.center.x}
-          cy={entity.center.y}
-          rx={entity.rx}
-          ry={entity.ry}
-          fill="none"
-          stroke={stroke}
-          strokeWidth={sw * 0.05}
-        />
+        <g>
+          <ellipse
+            cx={entity.center.x}
+            cy={entity.center.y}
+            rx={entity.rx}
+            ry={entity.ry}
+            fill="var(--svg-fill)"
+            fillOpacity={0.12}
+            stroke={stroke}
+            strokeWidth={sw}
+          />
+          {selected && (
+            <>
+              <Handle x={entity.center.x} y={entity.center.y} />
+              <Handle x={entity.center.x + entity.rx} y={entity.center.y} />
+              <Handle x={entity.center.x} y={entity.center.y - entity.ry} />
+            </>
+          )}
+        </g>
       );
+
+    case "dimension": {
+      const { startPt, endPt, offset, labelOverride } = entity;
+      const dx = endPt.x - startPt.x;
+      const dy = endPt.y - startPt.y;
+      const len = distance(startPt, endPt);
+      if (len < 0.001) return null;
+
+      // Perpendicular direction (normalized)
+      const px = -dy / len;
+      const py = dx / len;
+      const off = offset;
+
+      // Offset start/end points (where the dimension line sits)
+      const ds = { x: startPt.x + px * off, y: startPt.y + py * off };
+      const de = { x: endPt.x + px * off, y: endPt.y + py * off };
+
+      // Midpoint of dimension line for label
+      const mx = (ds.x + de.x) / 2;
+      const my = (ds.y + de.y) / 2;
+
+      // Label
+      const label = labelOverride ?? len.toFixed(2);
+
+      // Arrow size
+      const arrowLen = Math.min(0.2, len * 0.15);
+      const arrowW = arrowLen * 0.4;
+
+      // Unit direction along dimension line
+      const ux = dx / len;
+      const uy = dy / len;
+
+      // Extension line gap
+      const gap = off > 0 ? 0.1 : -0.1;
+
+      const dimColor = selected ? SEL_COLOR : "var(--svg-dim)";
+
+      return (
+        <g>
+          {/* Extension lines */}
+          <line
+            x1={startPt.x + px * gap}
+            y1={startPt.y + py * gap}
+            x2={ds.x + px * 0.15}
+            y2={ds.y + py * 0.15}
+            stroke={dimColor}
+            strokeWidth={0.025}
+          />
+          <line
+            x1={endPt.x + px * gap}
+            y1={endPt.y + py * gap}
+            x2={de.x + px * 0.15}
+            y2={de.y + py * 0.15}
+            stroke={dimColor}
+            strokeWidth={0.025}
+          />
+
+          {/* Dimension line */}
+          <line
+            x1={ds.x}
+            y1={ds.y}
+            x2={de.x}
+            y2={de.y}
+            stroke={dimColor}
+            strokeWidth={0.03}
+          />
+
+          {/* Arrows at start */}
+          <polygon
+            points={`${ds.x},${ds.y} ${ds.x + ux * arrowLen + px * arrowW},${ds.y + uy * arrowLen + py * arrowW} ${ds.x + ux * arrowLen - px * arrowW},${ds.y + uy * arrowLen - py * arrowW}`}
+            fill={dimColor}
+          />
+          {/* Arrows at end */}
+          <polygon
+            points={`${de.x},${de.y} ${de.x - ux * arrowLen + px * arrowW},${de.y - uy * arrowLen + py * arrowW} ${de.x - ux * arrowLen - px * arrowW},${de.y - uy * arrowLen - py * arrowW}`}
+            fill={dimColor}
+          />
+
+          {/* Label background */}
+          <rect
+            x={mx - label.length * 0.11}
+            y={my - 0.22}
+            width={label.length * 0.22}
+            height={0.4}
+            fill="var(--surface)"
+            rx={0.05}
+          />
+
+          {/* Label text */}
+          <text
+            x={mx}
+            y={my + 0.08}
+            fill={dimColor}
+            fontSize={0.32}
+            textAnchor="middle"
+            fontFamily="var(--font-mono)"
+            data-dimension-id={entity.id}
+          >
+            {label}
+          </text>
+
+          {selected && (
+            <>
+              <Handle x={startPt.x} y={startPt.y} />
+              <Handle x={endPt.x} y={endPt.y} />
+            </>
+          )}
+        </g>
+      );
+    }
   }
 }

@@ -10,6 +10,7 @@ import {
   Circle,
   Ellipsis,
   Move,
+  Ruler,
   ScanSearch,
   Grid3x3,
   Magnet,
@@ -44,6 +45,7 @@ const tools: { tool: ToolType; icon: typeof MousePointer2; label: string }[] = [
   { tool: "polyline", icon: Spline, label: "Polyline" },
   { tool: "circle", icon: Circle, label: "Circle" },
   { tool: "ellipse", icon: Ellipsis, label: "Ellipse" },
+  { tool: "dimension", icon: Ruler, label: "Dimension" },
   { tool: "region-pick", icon: ScanSearch, label: "Pick Region" },
 ];
 
