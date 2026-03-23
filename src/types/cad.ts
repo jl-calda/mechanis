@@ -93,6 +93,7 @@ export interface ClosedRegion {
   Ix: number;
   Iy: number;
   source: "auto" | "manual";
+  sign: "add" | "subtract";
 }
 
 // --- Computed results ---

@@ -71,7 +71,12 @@ export default function CadPage() {
         )}
 
         {/* Results */}
-        <CadResults entities={state.entities} regions={state.regions} />
+        <CadResults
+          entities={state.entities}
+          regions={state.regions}
+          onToggleRegionSign={(id) => dispatch({ type: "TOGGLE_REGION_SIGN", id })}
+          onRemoveRegion={(id) => dispatch({ type: "REMOVE_REGION", id })}
+        />
 
         {/* Entity list */}
         <div className="rounded-lg border border-border bg-surface overflow-hidden">

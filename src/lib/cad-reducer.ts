@@ -23,6 +23,8 @@ export type CadAction =
   | { type: "TOGGLE_SNAP" }
   | { type: "SET_REGIONS"; regions: ClosedRegion[] }
   | { type: "ADD_REGION"; region: ClosedRegion }
+  | { type: "TOGGLE_REGION_SIGN"; id: string }
+  | { type: "REMOVE_REGION"; id: string }
   | { type: "CLEAR_REGIONS" }
   | { type: "MOVE_ENTITIES"; ids: string[]; dx: number; dy: number }
   | { type: "RESIZE_HANDLE"; id: string; handleIndex: number; newPos: Point2D }
@@ -137,6 +139,19 @@ export function cadReducer(state: CadState, action: CadAction): CadState {
 
     case "ADD_REGION":
       return { ...state, regions: [...state.regions, action.region] };
+
+    case "TOGGLE_REGION_SIGN":
+      return {
+        ...state,
+        regions: state.regions.map((r) =>
+          r.id === action.id
+            ? { ...r, sign: r.sign === "add" ? "subtract" as const : "add" as const }
+            : r
+        ),
+      };
+
+    case "REMOVE_REGION":
+      return { ...state, regions: state.regions.filter((r) => r.id !== action.id) };
 
     case "CLEAR_REGIONS":
       return { ...state, regions: [] };

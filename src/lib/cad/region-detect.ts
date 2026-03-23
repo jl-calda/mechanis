@@ -261,7 +261,7 @@ export function autoDetectRegions(entities: CadEntity[]): ClosedRegion[] {
       id: generateId(),
       boundary: face,
       ...props,
-      source: "auto",
+      source: "auto", sign: "add",
     });
   }
 
@@ -299,7 +299,7 @@ function simpleDetect(entities: CadEntity[]): ClosedRegion[] {
     }
     if (polygon && polygon.length >= 3) {
       const props = computeRegionProps(polygon);
-      regions.push({ id: generateId(), boundary: polygon, ...props, source: "auto" });
+      regions.push({ id: generateId(), boundary: polygon, ...props, source: "auto", sign: "add" });
     }
   }
   return regions;
@@ -336,7 +336,7 @@ export function manualPickRegion(
             id: generateId(),
             boundary: face,
             ...props,
-            source: "manual",
+            source: "manual", sign: "add",
           };
         }
       }
@@ -364,7 +364,7 @@ export function manualPickRegion(
     }
     if (polygon && pointInPolygon(clickPt, polygon)) {
       const props = computeRegionProps(polygon);
-      return { id: generateId(), boundary: polygon, ...props, source: "manual" };
+      return { id: generateId(), boundary: polygon, ...props, source: "manual", sign: "add" };
     }
   }
 

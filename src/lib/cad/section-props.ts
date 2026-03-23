@@ -147,6 +147,102 @@ export function computeRegionProps(
   };
 }
 
+/**
+ * Compute composite section properties from multiple regions.
+ * Uses parallel axis theorem: positive regions add, negative regions subtract.
+ * This enables custom sections like W-shapes (3 rects), channels, built-up
+ * sections, and sections with holes.
+ */
+export function computeCompositeSectionProps(
+  regions: import("@/types/cad").ClosedRegion[]
+): SectionResult {
+  if (regions.length === 0) {
+    return { totalArea: 0, centroid: { x: 0, y: 0 }, Ix: 0, Iy: 0, Sx_top: 0, Sx_bot: 0, Sy_left: 0, Sy_right: 0, Zx: 0, Zy: 0, rx: 0, ry: 0 };
+  }
+
+  // Step 1: compute individual properties for each region
+  const parts: { A: number; cx: number; cy: number; Ix: number; Iy: number; boundary: Point2D[]; sign: number }[] = [];
+  for (const r of regions) {
+    const s = r.sign === "subtract" ? -1 : 1;
+    const A = signedArea(r.boundary);
+    const absA = Math.abs(A);
+    const ctr = centroid(r.boundary, A);
+    const mom = secondMoments(r.boundary, A, ctr);
+    parts.push({ A: absA * s, cx: ctr.x, cy: ctr.y, Ix: mom.Ix, Iy: mom.Iy, boundary: r.boundary, sign: s });
+  }
+
+  // Step 2: composite centroid
+  let totalA = 0;
+  let sumAx = 0;
+  let sumAy = 0;
+  for (const p of parts) {
+    totalA += p.A;
+    sumAx += p.A * p.cx;
+    sumAy += p.A * p.cy;
+  }
+  if (Math.abs(totalA) < 1e-10) {
+    return { totalArea: 0, centroid: { x: 0, y: 0 }, Ix: 0, Iy: 0, Sx_top: 0, Sx_bot: 0, Sy_left: 0, Sy_right: 0, Zx: 0, Zy: 0, rx: 0, ry: 0 };
+  }
+  const compCx = sumAx / totalA;
+  const compCy = sumAy / totalA;
+
+  // Step 3: parallel axis theorem for composite Ix, Iy
+  let compIx = 0;
+  let compIy = 0;
+  for (const p of parts) {
+    const dy = p.cy - compCy;
+    const dx = p.cx - compCx;
+    // I_composite = Σ(I_i + A_i * d²) with sign
+    compIx += p.sign * (p.Ix + Math.abs(p.A) * dy * dy);
+    compIy += p.sign * (p.Iy + Math.abs(p.A) * dx * dx);
+  }
+  compIx = Math.abs(compIx);
+  compIy = Math.abs(compIy);
+  const absTotal = Math.abs(totalA);
+
+  // Step 4: bounding box extents from all add regions
+  let yMin = Infinity, yMax = -Infinity, xMin = Infinity, xMax = -Infinity;
+  for (const p of parts) {
+    if (p.sign < 0) continue; // only positive regions define extents
+    for (const pt of p.boundary) {
+      yMin = Math.min(yMin, pt.y);
+      yMax = Math.max(yMax, pt.y);
+      xMin = Math.min(xMin, pt.x);
+      xMax = Math.max(xMax, pt.x);
+    }
+  }
+  const yTop = Math.abs(yMin - compCy);
+  const yBot = Math.abs(yMax - compCy);
+  const xLeft = Math.abs(xMin - compCx);
+  const xRight = Math.abs(xMax - compCx);
+
+  const Sx_top = yTop > 0 ? compIx / yTop : 0;
+  const Sx_bot = yBot > 0 ? compIx / yBot : 0;
+  const Sy_left = xLeft > 0 ? compIy / xLeft : 0;
+  const Sy_right = xRight > 0 ? compIy / xRight : 0;
+
+  const Zx = absTotal > 0 ? (compIx / Math.max(yTop, yBot)) * 1.12 : 0;
+  const Zy = absTotal > 0 ? (compIy / Math.max(xLeft, xRight)) * 1.12 : 0;
+
+  const rx = absTotal > 0 ? Math.sqrt(compIx / absTotal) : 0;
+  const ry = absTotal > 0 ? Math.sqrt(compIy / absTotal) : 0;
+
+  return {
+    totalArea: round(absTotal),
+    centroid: { x: round(compCx), y: round(compCy) },
+    Ix: round(compIx),
+    Iy: round(compIy),
+    Sx_top: round(Sx_top),
+    Sx_bot: round(Sx_bot),
+    Sy_left: round(Sy_left),
+    Sy_right: round(Sy_right),
+    Zx: round(Zx),
+    Zy: round(Zy),
+    rx: round(rx),
+    ry: round(ry),
+  };
+}
+
 function round(v: number, decimals = 4): number {
   const f = 10 ** decimals;
   return Math.round(v * f) / f;
