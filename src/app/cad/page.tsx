@@ -26,6 +26,13 @@ export default function CadPage() {
     dispatch({ type: "DELETE_ENTITIES", ids: state.selectedIds });
   }
 
+  function handleZoomToFit() {
+    const svg = document.querySelector(".cad-svg");
+    const w = svg?.clientWidth ?? 800;
+    const h = svg?.clientHeight ?? 600;
+    dispatch({ type: "ZOOM_TO_FIT", canvasWidth: w, canvasHeight: h });
+  }
+
   return (
     <div className="flex h-[calc(100vh-3rem)] gap-3 pt-2">
       {/* Left toolbar */}
@@ -43,6 +50,7 @@ export default function CadPage() {
         onRedo={() => dispatch({ type: "REDO" })}
         onAnalyze={handleAnalyze}
         onDeleteSelected={handleDeleteSelected}
+        onZoomToFit={handleZoomToFit}
       />
 
       {/* Canvas */}

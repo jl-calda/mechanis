@@ -6,6 +6,7 @@ import type {
   ClosedRegion,
   Viewport,
 } from "@/types/cad";
+import { getEntityBounds } from "@/lib/cad/geometry";
 
 export type CadAction =
   | { type: "SET_TOOL"; tool: ToolType }
@@ -24,6 +25,7 @@ export type CadAction =
   | { type: "ADD_REGION"; region: ClosedRegion }
   | { type: "CLEAR_REGIONS" }
   | { type: "MOVE_ENTITIES"; ids: string[]; dx: number; dy: number }
+  | { type: "ZOOM_TO_FIT"; canvasWidth: number; canvasHeight: number }
   | { type: "UNDO" }
   | { type: "REDO" };
 
@@ -169,6 +171,30 @@ export function cadReducer(state: CadState, action: CadAction): CadState {
         }
       });
       return pushHistory(state, newEntities);
+    }
+
+    case "ZOOM_TO_FIT": {
+      if (state.entities.length === 0) return state;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const e of state.entities) {
+        const b = getEntityBounds(e);
+        if (!b) continue;
+        minX = Math.min(minX, b.minX);
+        minY = Math.min(minY, b.minY);
+        maxX = Math.max(maxX, b.maxX);
+        maxY = Math.max(maxY, b.maxY);
+      }
+      if (!isFinite(minX)) return state;
+      const pad = 2; // world units padding
+      const bw = maxX - minX + pad * 2;
+      const bh = maxY - minY + pad * 2;
+      const cx = (minX + maxX) / 2;
+      const cy = (minY + maxY) / 2;
+      const { canvasWidth, canvasHeight } = action;
+      const zoom = Math.min(canvasWidth / bw, canvasHeight / bh, 20);
+      const panX = canvasWidth / 2 - cx * zoom;
+      const panY = canvasHeight / 2 - cy * zoom;
+      return { ...state, viewport: { zoom, panX, panY } };
     }
 
     case "UNDO": {

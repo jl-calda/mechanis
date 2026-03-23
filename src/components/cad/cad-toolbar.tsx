@@ -18,6 +18,7 @@ import {
   Redo2,
   Sparkles,
   Trash2,
+  Maximize2,
 } from "lucide-react";
 
 interface Props {
@@ -34,6 +35,7 @@ interface Props {
   onRedo: () => void;
   onAnalyze: () => void;
   onDeleteSelected: () => void;
+  onZoomToFit: () => void;
 }
 
 const tools: { tool: ToolType; icon: typeof MousePointer2; label: string }[] = [
@@ -68,6 +70,7 @@ export function CadToolbar({
   onRedo,
   onAnalyze,
   onDeleteSelected,
+  onZoomToFit,
 }: Props) {
   return (
     <div className="flex flex-col gap-1 rounded-lg border border-border bg-surface p-1.5">
@@ -133,6 +136,15 @@ export function CadToolbar({
           <Trash2 size={15} />
         </button>
       )}
+
+      {/* Zoom to Fit */}
+      <button
+        onClick={onZoomToFit}
+        className={`${btnBase} ${btnInactive}`}
+        title="Zoom to Fit"
+      >
+        <Maximize2 size={15} />
+      </button>
 
       {/* Analyze */}
       <button
