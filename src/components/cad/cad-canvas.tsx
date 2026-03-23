@@ -436,7 +436,8 @@ export function CadCanvas({ state, dispatch }: Props) {
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
       const world = screenToWorld(e.clientX, e.clientY);
-      const snapResult = doSnap(world);
+      const noSnap = activeTool === "trim" || activeTool === "region-pick";
+      const snapResult = noSnap ? { pt: world, type: null as "grid" | "node" | null } : doSnap(world);
       setCursorPos(snapResult.pt);
       setPreviewPt(snapResult.pt);
       setSnapType(snapResult.type);
@@ -448,7 +449,7 @@ export function CadCanvas({ state, dispatch }: Props) {
       }
 
       // Compute snap indicator point
-      const nearest = findNearestSnap(world, entities, snapRadius);
+      const nearest = noSnap ? null : findNearestSnap(world, entities, snapRadius);
       setSnapPt(nearest && distance(world, nearest) < snapRadius ? nearest : null);
 
       // Resize handle drag
