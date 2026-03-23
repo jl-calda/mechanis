@@ -109,10 +109,12 @@ export function CadCanvas({ state, dispatch }: Props) {
   const isSelecting = useRef(false);
   const selStartWorld = useRef<Point2D>({ x: 0, y: 0 });
 
-  // Cursor tooltip input state
-  const [tooltipInput, setTooltipInput] = useState<string>("");
+  // Cursor tooltip input state — multi-field
+  const [tooltipFields, setTooltipFields] = useState<{ labels: string[]; values: string[]; placeholders: string[] }>({ labels: [], values: [], placeholders: [] });
+  const [tooltipActiveField, setTooltipActiveField] = useState(0);
   const [showTooltipInput, setShowTooltipInput] = useState(false);
-  const tooltipInputRef = useRef<HTMLInputElement>(null);
+  const tooltipInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const tooltipCommitRef = useRef<() => void>(() => {});
   const [mouseScreenPos, setMouseScreenPos] = useState({ x: 0, y: 0 });
 
   // Editable dimension state
@@ -210,7 +212,7 @@ export function CadCanvas({ state, dispatch }: Props) {
   // Hit test
   const hitTest = useCallback(
     (p: Point2D): string | null => {
-      const tol = 0.3 / viewport.zoom;
+      const tol = 0.5 / viewport.zoom;
       for (let i = entities.length - 1; i >= 0; i--) {
         const e = entities[i];
         switch (e.type) {
@@ -316,7 +318,7 @@ export function CadCanvas({ state, dispatch }: Props) {
 
       // Fillet mode — two-click: first edge, then second edge
       if (activeTool === "fillet") {
-        const tol = 0.3 / viewport.zoom;
+        const tol = 0.5 / viewport.zoom;
         const edge = hitTestEdge(world, entities, tol);
         if (edge) {
           if (!filletFirstEdge) {
@@ -394,22 +396,30 @@ export function CadCanvas({ state, dispatch }: Props) {
         return;
       }
 
+      // If tooltip is showing, a click on canvas commits it and places the entity
+      if (showTooltipInput) {
+        tooltipCommitRef.current();
+        return;
+      }
+
       // Drawing tools
       if (activeTool === "point") {
         dispatch({ type: "ADD_ENTITY", entity: { id: generateId(), type: "point", position: pt, stroke: "", strokeWidth: 1, locked: false } });
         return;
       }
       if (activeTool === "line") {
-        if (!drawState) { dispatch({ type: "SET_DRAW_STATE", points: [pt] }); }
-        else {
+        if (!drawState) {
+          dispatch({ type: "SET_DRAW_STATE", points: [pt] });
+        } else {
           dispatch({ type: "ADD_ENTITY", entity: { id: generateId(), type: "line", start: drawState.points[0], end: pt, thickness: 0, stroke: "", strokeWidth: 1, locked: false } });
           dispatch({ type: "SET_DRAW_STATE", points: null });
         }
         return;
       }
       if (activeTool === "rectangle") {
-        if (!drawState) { dispatch({ type: "SET_DRAW_STATE", points: [pt] }); }
-        else {
+        if (!drawState) {
+          dispatch({ type: "SET_DRAW_STATE", points: [pt] });
+        } else {
           const origin = drawState.points[0];
           dispatch({ type: "ADD_ENTITY", entity: { id: generateId(), type: "rectangle", origin: { x: Math.min(origin.x, pt.x), y: Math.min(origin.y, pt.y) }, width: Math.abs(pt.x - origin.x), height: Math.abs(pt.y - origin.y), stroke: "", strokeWidth: 1, locked: false } });
           dispatch({ type: "SET_DRAW_STATE", points: null });
@@ -417,21 +427,26 @@ export function CadCanvas({ state, dispatch }: Props) {
         return;
       }
       if (activeTool === "polyline") {
-        if (!drawState) { dispatch({ type: "SET_DRAW_STATE", points: [pt] }); }
-        else { dispatch({ type: "SET_DRAW_STATE", points: [...drawState.points, pt] }); }
+        if (!drawState) {
+          dispatch({ type: "SET_DRAW_STATE", points: [pt] });
+        } else {
+          dispatch({ type: "SET_DRAW_STATE", points: [...drawState.points, pt] });
+        }
         return;
       }
       if (activeTool === "circle") {
-        if (!drawState) { dispatch({ type: "SET_DRAW_STATE", points: [pt] }); }
-        else {
+        if (!drawState) {
+          dispatch({ type: "SET_DRAW_STATE", points: [pt] });
+        } else {
           dispatch({ type: "ADD_ENTITY", entity: { id: generateId(), type: "circle", center: drawState.points[0], radius: distance(drawState.points[0], pt), stroke: "", strokeWidth: 1, locked: false } });
           dispatch({ type: "SET_DRAW_STATE", points: null });
         }
         return;
       }
       if (activeTool === "ellipse") {
-        if (!drawState) { dispatch({ type: "SET_DRAW_STATE", points: [pt] }); }
-        else {
+        if (!drawState) {
+          dispatch({ type: "SET_DRAW_STATE", points: [pt] });
+        } else {
           const center = drawState.points[0];
           dispatch({ type: "ADD_ENTITY", entity: { id: generateId(), type: "ellipse", center, rx: Math.abs(pt.x - center.x), ry: Math.abs(pt.y - center.y), stroke: "", strokeWidth: 1, locked: false } });
           dispatch({ type: "SET_DRAW_STATE", points: null });
@@ -440,13 +455,10 @@ export function CadCanvas({ state, dispatch }: Props) {
       }
       if (activeTool === "dimension") {
         if (!drawState) {
-          // Click 1: first node
           dispatch({ type: "SET_DRAW_STATE", points: [pt] });
         } else if (drawState.points.length === 1) {
-          // Click 2: second node
           dispatch({ type: "SET_DRAW_STATE", points: [...drawState.points, pt] });
         } else if (drawState.points.length === 2) {
-          // Click 3: set offset by computing perpendicular distance from click to the line between pt1-pt2
           const p1 = drawState.points[0];
           const p2 = drawState.points[1];
           const dx = p2.x - p1.x;
@@ -454,7 +466,6 @@ export function CadCanvas({ state, dispatch }: Props) {
           const len = Math.sqrt(dx * dx + dy * dy);
           let offset = 0.8;
           if (len > 0.001) {
-            // Perpendicular distance from world click to line p1-p2 (signed)
             const nx = -dy / len;
             const ny = dx / len;
             offset = (world.x - p1.x) * nx + (world.y - p1.y) * ny;
@@ -466,7 +477,7 @@ export function CadCanvas({ state, dispatch }: Props) {
         return;
       }
     },
-    [activeTool, drawState, screenToWorld, doSnap, hitTest, dispatch, entities, viewport, selectedIds, editingDim, filletFirstEdge, filletRadius]
+    [activeTool, drawState, screenToWorld, doSnap, hitTest, dispatch, entities, viewport, selectedIds, editingDim, filletFirstEdge, filletRadius, showTooltipInput]
   );
 
   const handlePointerMove = useCallback(
@@ -546,7 +557,7 @@ export function CadCanvas({ state, dispatch }: Props) {
 
       // Fillet hover preview
       if (activeTool === "fillet") {
-        const tol = 0.3 / viewport.zoom;
+        const tol = 0.5 / viewport.zoom;
         const edge = hitTestEdge(world, entities, tol);
         if (edge) {
           setFilletHoverEdge(edge);
@@ -677,54 +688,138 @@ export function CadCanvas({ state, dispatch }: Props) {
   }, [editingDim, entities, dispatch]);
 
   // Handle tooltip input commit: parse value and apply to current drawing
+  /** Get tooltip field config for the current tool and draw state */
+  const getTooltipConfig = useCallback((tool: string, ds: typeof drawState): { labels: string[]; placeholders: string[]; defaults: string[] } | null => {
+    if (tool === "fillet") return { labels: ["r:"], placeholders: [filletRadius.toFixed(2)], defaults: [filletRadius.toFixed(2)] };
+    if (!ds || ds.points.length < 1) return null;
+    if (tool === "line" || tool === "polyline") {
+      const refPt = tool === "polyline" ? ds.points[ds.points.length - 1] : ds.points[0];
+      const d = distance(refPt, cursorPos);
+      const ang = Math.atan2(cursorPos.y - refPt.y, cursorPos.x - refPt.x) * 180 / Math.PI;
+      return { labels: ["len:", "ang:"], placeholders: [d.toFixed(2), ang.toFixed(1)], defaults: ["", ang.toFixed(1)] };
+    }
+    if (tool === "rectangle") return { labels: ["w:", "h:"], placeholders: ["1.00", "1.00"], defaults: ["", ""] };
+    if (tool === "circle") return { labels: ["r:"], placeholders: ["1.00"], defaults: [""] };
+    if (tool === "ellipse") return { labels: ["rx:", "ry:"], placeholders: ["1.00", "1.00"], defaults: ["", ""] };
+    if (tool === "dimension" && ds.points.length >= 2) return { labels: ["len:"], placeholders: [distance(ds.points[0], ds.points[1]).toFixed(2)], defaults: [""] };
+    return null;
+  }, [cursorPos, filletRadius]);
+
+  /** Open the tooltip input with appropriate fields */
+  const openTooltipInput = useCallback((tool: string, ds: typeof drawState) => {
+    const cfg = getTooltipConfig(tool, ds);
+    if (!cfg) return;
+    setTooltipFields({ labels: cfg.labels, values: cfg.defaults, placeholders: cfg.placeholders });
+    setTooltipActiveField(0);
+    setShowTooltipInput(true);
+    setTimeout(() => {
+      tooltipInputRefs.current[0]?.focus();
+      tooltipInputRefs.current[0]?.select();
+    }, 10);
+  }, [getTooltipConfig]);
+
+  /** Close the tooltip and reset */
+  const closeTooltip = useCallback(() => {
+    setShowTooltipInput(false);
+    setTooltipFields({ labels: [], values: [], placeholders: [] });
+    setTooltipActiveField(0);
+  }, []);
+
+  /** Commit the current tooltip values */
   const handleTooltipCommit = useCallback(() => {
-    if (!drawState || !tooltipInput) { setShowTooltipInput(false); setTooltipInput(""); return; }
-    const val = parseFloat(tooltipInput);
-    if (isNaN(val) || val <= 0) { setShowTooltipInput(false); setTooltipInput(""); return; }
+    const vals = tooltipFields.values;
+    const phs = tooltipFields.placeholders;
+
+    // Fillet radius — update radius state
+    if (activeTool === "fillet") {
+      const r = parseFloat(vals[0] || phs[0]);
+      if (!isNaN(r) && r > 0) setFilletRadius(r);
+      closeTooltip();
+      return;
+    }
+
+    if (!drawState) { closeTooltip(); return; }
     const start = drawState.points[0];
 
     if (activeTool === "line") {
-      const dx = cursorPos.x - start.x;
-      const dy = cursorPos.y - start.y;
-      const len = Math.sqrt(dx * dx + dy * dy);
-      const ux = len > 0 ? dx / len : 1;
-      const uy = len > 0 ? dy / len : 0;
-      const endPt = { x: start.x + ux * val, y: start.y + uy * val };
+      const len = parseFloat(vals[0] || phs[0]);
+      if (isNaN(len) || len <= 0) { closeTooltip(); return; }
+      const angDeg = parseFloat(vals[1] || phs[1]);
+      const ang = isNaN(angDeg) ? 0 : angDeg * Math.PI / 180;
+      const endPt = { x: start.x + Math.cos(ang) * len, y: start.y + Math.sin(ang) * len };
       dispatch({ type: "ADD_ENTITY", entity: { id: generateId(), type: "line", start, end: endPt, thickness: 0, stroke: "", strokeWidth: 1, locked: false } });
       dispatch({ type: "SET_DRAW_STATE", points: null });
+    } else if (activeTool === "polyline") {
+      const lastPt = drawState.points[drawState.points.length - 1];
+      const len = parseFloat(vals[0] || phs[0]);
+      if (isNaN(len) || len <= 0) { closeTooltip(); return; }
+      const angDeg = parseFloat(vals[1] || phs[1]);
+      const ang = isNaN(angDeg) ? 0 : angDeg * Math.PI / 180;
+      const newPt = { x: lastPt.x + Math.cos(ang) * len, y: lastPt.y + Math.sin(ang) * len };
+      dispatch({ type: "SET_DRAW_STATE", points: [...drawState.points, newPt] });
     } else if (activeTool === "rectangle") {
-      // Parse as "w,h" or single value for square
-      const parts = tooltipInput.split(/[,x×]/);
-      const w = parseFloat(parts[0]) || val;
-      const h = parts.length > 1 ? (parseFloat(parts[1]) || val) : val;
+      const w = parseFloat(vals[0] || phs[0]);
+      const h = parseFloat(vals[1] || phs[1] || vals[0] || phs[0]);
+      if (isNaN(w) || w <= 0 || isNaN(h) || h <= 0) { closeTooltip(); return; }
       dispatch({ type: "ADD_ENTITY", entity: { id: generateId(), type: "rectangle", origin: start, width: w, height: h, stroke: "", strokeWidth: 1, locked: false } });
       dispatch({ type: "SET_DRAW_STATE", points: null });
     } else if (activeTool === "circle") {
-      dispatch({ type: "ADD_ENTITY", entity: { id: generateId(), type: "circle", center: start, radius: val, stroke: "", strokeWidth: 1, locked: false } });
+      const r = parseFloat(vals[0] || phs[0]);
+      if (isNaN(r) || r <= 0) { closeTooltip(); return; }
+      dispatch({ type: "ADD_ENTITY", entity: { id: generateId(), type: "circle", center: start, radius: r, stroke: "", strokeWidth: 1, locked: false } });
       dispatch({ type: "SET_DRAW_STATE", points: null });
     } else if (activeTool === "ellipse") {
-      const parts = tooltipInput.split(/[,x×]/);
-      const rx = parseFloat(parts[0]) || val;
-      const ry = parts.length > 1 ? (parseFloat(parts[1]) || val) : val;
+      const rx = parseFloat(vals[0] || phs[0]);
+      const ry = parseFloat(vals[1] || phs[1] || vals[0] || phs[0]);
+      if (isNaN(rx) || rx <= 0 || isNaN(ry) || ry <= 0) { closeTooltip(); return; }
       dispatch({ type: "ADD_ENTITY", entity: { id: generateId(), type: "ellipse", center: start, rx, ry, stroke: "", strokeWidth: 1, locked: false } });
       dispatch({ type: "SET_DRAW_STATE", points: null });
     }
 
-    setShowTooltipInput(false);
-    setTooltipInput("");
-  }, [drawState, tooltipInput, activeTool, cursorPos, dispatch]);
+    closeTooltip();
+  }, [drawState, tooltipFields, activeTool, cursorPos, dispatch, closeTooltip]);
+
+  // Keep ref in sync so handlePointerDown can call it without circular dependency
+  tooltipCommitRef.current = handleTooltipCommit;
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (editingDim || showTooltipInput) return;
+      if (editingDim) return;
 
-      // Tab opens dimension input when drawing
-      if (e.key === "Tab" && drawState && drawState.points.length >= 1) {
-        e.preventDefault();
-        setShowTooltipInput(true);
-        setTooltipInput("");
-        setTimeout(() => tooltipInputRef.current?.focus(), 10);
+      // When tooltip is open, only handle Escape and Tab to cycle fields
+      if (showTooltipInput) {
+        // These are handled by the input fields' own onKeyDown
         return;
+      }
+
+      // Tab opens tooltip input when drawing (or fillet mode)
+      if (e.key === "Tab") {
+        e.preventDefault();
+        const hasDrawing = drawState && drawState.points.length >= 1;
+        if (hasDrawing || activeTool === "fillet") {
+          openTooltipInput(activeTool, drawState);
+        }
+        return;
+      }
+
+      // Number keys / minus / dot auto-open tooltip input and start typing
+      const isNumKey = /^[0-9.\-]$/.test(e.key);
+      if (isNumKey && !e.ctrlKey && !e.metaKey) {
+        const hasDrawing = drawState && drawState.points.length >= 1;
+        if (hasDrawing || activeTool === "fillet") {
+          e.preventDefault();
+          const cfg = getTooltipConfig(activeTool, drawState);
+          if (cfg) {
+            setTooltipFields({ labels: cfg.labels, values: [e.key, ...cfg.defaults.slice(1)], placeholders: cfg.placeholders });
+            setTooltipActiveField(0);
+            setShowTooltipInput(true);
+            setTimeout(() => {
+              const inp = tooltipInputRefs.current[0];
+              if (inp) { inp.focus(); inp.selectionStart = inp.selectionEnd = 1; }
+            }, 10);
+          }
+          return;
+        }
       }
 
       if (e.key === "Escape") {
@@ -749,13 +844,8 @@ export function CadCanvas({ state, dispatch }: Props) {
         dispatch({ type: "ADD_ENTITY", entity: { id: generateId(), type: "polyline", points: drawState.points, closed: true, thickness: 0, stroke: "", strokeWidth: 1, locked: false } });
         dispatch({ type: "SET_DRAW_STATE", points: null });
       }
-      // Fillet radius adjustment
-      if (activeTool === "fillet") {
-        if (e.key === "+" || e.key === "=") setFilletRadius((r) => Math.round((r + 0.05) * 100) / 100);
-        if (e.key === "-" || e.key === "_") setFilletRadius((r) => Math.max(0.05, Math.round((r - 0.05) * 100) / 100));
-      }
     },
-    [activeTool, drawState, selectedIds, dispatch, editingDim, showTooltipInput, filletFirstEdge]
+    [activeTool, drawState, selectedIds, dispatch, editingDim, showTooltipInput, filletFirstEdge, openTooltipInput, getTooltipConfig]
   );
 
   // Compute viewBox
@@ -976,15 +1066,9 @@ export function CadCanvas({ state, dispatch }: Props) {
           style={{ left: mouseScreenPos.x + 16, top: mouseScreenPos.y + 16 }}
         >
           {/* Snap indicator */}
-          {snapType === "node" && (
-            <span className="text-primary mr-1.5">● Node</span>
-          )}
-          {snapType === "grid" && (
-            <span className="text-sky-400 mr-1.5">▦ Grid</span>
-          )}
-          {!snapType && (
-            <span className="text-muted/40 mr-1.5">○ Free</span>
-          )}
+          {snapType === "node" && <span className="text-primary mr-1.5">● Node</span>}
+          {snapType === "grid" && <span className="text-sky-400 mr-1.5">▦ Grid</span>}
+          {!snapType && <span className="text-muted/40 mr-1.5">○ Free</span>}
 
           {/* Coordinates */}
           <span className="text-muted">{cursorPos.x.toFixed(2)}, {cursorPos.y.toFixed(2)}</span>
@@ -995,16 +1079,15 @@ export function CadCanvas({ state, dispatch }: Props) {
             if (activeTool === "line") {
               const d = distance(start, previewPt);
               const ang = Math.atan2(previewPt.y - start.y, previewPt.x - start.x) * 180 / Math.PI;
-              return <><span className="text-border mx-1">|</span><span className="text-primary">{d.toFixed(2)}</span> <span className="text-muted">@ {ang.toFixed(1)}°</span> <span className="text-muted/40 ml-1">Tab</span></>;
+              return <><span className="text-border mx-1">|</span><span className="text-primary">{d.toFixed(2)}</span> <span className="text-muted">@ {ang.toFixed(1)}°</span> <span className="text-muted/40 ml-1">[Tab] or type</span></>;
             }
             if (activeTool === "dimension") {
               if (drawState.points.length === 1) {
                 const d = distance(start, previewPt);
-                return <><span className="text-border mx-1">|</span><span className="text-primary">{d.toFixed(2)}</span> <span className="text-muted/40 ml-1">node 2</span></>;
+                return <><span className="text-border mx-1">|</span><span className="text-primary">{d.toFixed(2)}</span> <span className="text-muted/40 ml-1">click node 2</span></>;
               }
               if (drawState.points.length === 2) {
-                const p1 = drawState.points[0];
-                const p2 = drawState.points[1];
+                const p1 = drawState.points[0], p2 = drawState.points[1];
                 const d = distance(p1, p2);
                 const dx = p2.x - p1.x, dy = p2.y - p1.y;
                 const len = Math.sqrt(dx * dx + dy * dy);
@@ -1015,54 +1098,84 @@ export function CadCanvas({ state, dispatch }: Props) {
               return null;
             }
             if (activeTool === "rectangle") {
-              const w = Math.abs(previewPt.x - start.x);
-              const h = Math.abs(previewPt.y - start.y);
-              return <><span className="text-border mx-1">|</span><span className="text-primary">{w.toFixed(2)}</span><span className="text-muted">×</span><span className="text-primary">{h.toFixed(2)}</span> <span className="text-muted/40 ml-1">Tab</span></>;
+              const w = Math.abs(previewPt.x - start.x), h = Math.abs(previewPt.y - start.y);
+              return <><span className="text-border mx-1">|</span><span className="text-primary">{w.toFixed(2)}</span><span className="text-muted">×</span><span className="text-primary">{h.toFixed(2)}</span> <span className="text-muted/40 ml-1">[Tab] or type</span></>;
             }
             if (activeTool === "circle") {
               const r = distance(start, previewPt);
-              return <><span className="text-border mx-1">|</span><span className="text-muted">r=</span><span className="text-primary">{r.toFixed(2)}</span> <span className="text-muted/40 ml-1">Tab</span></>;
+              return <><span className="text-border mx-1">|</span><span className="text-muted">r=</span><span className="text-primary">{r.toFixed(2)}</span> <span className="text-muted/40 ml-1">[Tab] or type</span></>;
             }
             if (activeTool === "ellipse") {
-              const rx = Math.abs(previewPt.x - start.x);
-              const ry = Math.abs(previewPt.y - start.y);
-              return <><span className="text-border mx-1">|</span><span className="text-primary">{rx.toFixed(2)}</span><span className="text-muted">×</span><span className="text-primary">{ry.toFixed(2)}</span> <span className="text-muted/40 ml-1">Tab</span></>;
+              const rx = Math.abs(previewPt.x - start.x), ry = Math.abs(previewPt.y - start.y);
+              return <><span className="text-border mx-1">|</span><span className="text-primary">{rx.toFixed(2)}</span><span className="text-muted">×</span><span className="text-primary">{ry.toFixed(2)}</span> <span className="text-muted/40 ml-1">[Tab] or type</span></>;
             }
             if (activeTool === "polyline") {
               const lastPt = drawState.points[drawState.points.length - 1];
               const d = distance(lastPt, previewPt);
-              return <><span className="text-border mx-1">|</span><span className="text-primary">{d.toFixed(2)}</span> <span className="text-muted/40 ml-1">Tab</span></>;
+              const ang = Math.atan2(previewPt.y - lastPt.y, previewPt.x - lastPt.x) * 180 / Math.PI;
+              return <><span className="text-border mx-1">|</span><span className="text-primary">{d.toFixed(2)}</span> <span className="text-muted">@ {ang.toFixed(1)}°</span> <span className="text-muted/40 ml-1">[Tab] or type</span></>;
             }
             return null;
           })()}
+
+          {/* Fillet radius display */}
+          {activeTool === "fillet" && (
+            <><span className="text-border mx-1">|</span><span className="text-muted">r=</span><span className="text-primary">{filletRadius.toFixed(2)}</span> <span className="text-muted/40 ml-1">[Tab] to edit</span></>
+          )}
         </div>
       )}
 
-      {/* Tooltip dimension input — appears when Tab is pressed during drawing */}
-      {showTooltipInput && drawState && (
+      {/* Multi-field tooltip input — appears when Tab or number key is pressed during drawing */}
+      {showTooltipInput && (
         <div
           className="absolute z-20"
           style={{ left: mouseScreenPos.x + 16, top: mouseScreenPos.y + 16 }}
         >
-          <div className="flex items-center gap-1 rounded bg-surface border border-primary px-1.5 py-1 shadow-lg">
-            <span className="text-[10px] text-muted">
-              {activeTool === "rectangle" ? "w,h:" : activeTool === "ellipse" ? "rx,ry:" : activeTool === "circle" ? "r:" : "len:"}
-            </span>
-            <input
-              ref={tooltipInputRef}
-              type="text"
-              value={tooltipInput}
-              onChange={(e) => setTooltipInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleTooltipCommit();
-                if (e.key === "Escape") { setShowTooltipInput(false); setTooltipInput(""); }
-                e.stopPropagation();
-              }}
-              onBlur={() => { setShowTooltipInput(false); setTooltipInput(""); }}
-              placeholder={activeTool === "rectangle" || activeTool === "ellipse" ? "5,3" : "5.00"}
-              className="w-16 bg-transparent text-xs font-mono text-foreground placeholder:text-muted/40 focus:outline-none"
-              autoFocus
-            />
+          <div className="flex items-center gap-1.5 rounded bg-surface border border-primary px-1.5 py-1 shadow-lg">
+            {tooltipFields.labels.map((label, i) => (
+              <div key={label} className="flex items-center gap-0.5">
+                {i > 0 && <span className="text-border text-[10px]">|</span>}
+                <span className="text-[10px] text-muted">{label}</span>
+                <input
+                  ref={(el) => { tooltipInputRefs.current[i] = el; }}
+                  type="text"
+                  value={tooltipFields.values[i]}
+                  onChange={(ev) => {
+                    const newVals = [...tooltipFields.values];
+                    newVals[i] = ev.target.value;
+                    setTooltipFields({ ...tooltipFields, values: newVals });
+                  }}
+                  onFocus={() => setTooltipActiveField(i)}
+                  onKeyDown={(ev) => {
+                    if (ev.key === "Enter") { handleTooltipCommit(); }
+                    else if (ev.key === "Tab") {
+                      ev.preventDefault();
+                      const next = ev.shiftKey
+                        ? (i - 1 + tooltipFields.labels.length) % tooltipFields.labels.length
+                        : (i + 1) % tooltipFields.labels.length;
+                      // If Tab forward past last field, commit
+                      if (!ev.shiftKey && i === tooltipFields.labels.length - 1) {
+                        handleTooltipCommit();
+                      } else {
+                        setTooltipActiveField(next);
+                        setTimeout(() => { tooltipInputRefs.current[next]?.focus(); tooltipInputRefs.current[next]?.select(); }, 0);
+                      }
+                    }
+                    else if (ev.key === "Escape") { closeTooltip(); }
+                    ev.stopPropagation();
+                  }}
+                  onBlur={(ev) => {
+                    // Only close if focus left ALL tooltip inputs
+                    const related = ev.relatedTarget as HTMLElement | null;
+                    const isTooltipInput = tooltipInputRefs.current.some((r) => r === related);
+                    if (!isTooltipInput) setTimeout(() => closeTooltip(), 100);
+                  }}
+                  placeholder={tooltipFields.placeholders[i]}
+                  className={`w-14 bg-transparent text-xs font-mono text-foreground placeholder:text-muted/40 focus:outline-none ${i === tooltipActiveField ? "border-b border-primary" : ""}`}
+                />
+              </div>
+            ))}
+            <span className="text-[9px] text-muted/40 ml-0.5">↵</span>
           </div>
         </div>
       )}
@@ -1077,18 +1190,26 @@ export function CadCanvas({ state, dispatch }: Props) {
       {/* Active tool hint */}
       <div className="absolute top-2 left-2 rounded bg-surface/80 px-2 py-0.5 text-[10px] text-muted backdrop-blur-sm">
         {activeTool === "polyline" && drawState
-          ? "Click to add points · Double-click to finish · C to close"
+          ? "Click to add · Double-click to finish · C to close · Type to enter length,angle"
           : activeTool === "select"
-            ? "Click to select · Drag to move · Drag handle to resize · Right-click handle to lock/unlock"
+            ? "Click to select · Drag to move · Drag handle to resize"
             : activeTool === "dimension"
-              ? !drawState ? "Click first node" : drawState.points.length === 1 ? "Click second node" : "Click to set offset distance"
+              ? !drawState ? "Click first node" : drawState.points.length === 1 ? "Click second node" : "Click to set offset"
               : activeTool === "trim"
-                ? "Hover to highlight · Click to trim at intersections"
+                ? "Hover to highlight · Click to trim"
                 : activeTool === "fillet"
-                  ? !filletFirstEdge ? `Click first edge · r=${filletRadius} · +/- to adjust` : "Click second edge to fillet"
+                  ? !filletFirstEdge ? `Click first edge · Tab to set r=${filletRadius}` : "Click second edge to fillet"
                   : activeTool === "region-pick"
-                    ? "Click inside a closed shape to detect region"
-                    : drawState ? "Click to set second point · Esc to cancel" : "Click to start drawing · Esc to cancel · F to zoom fit"}
+                    ? "Click inside a closed shape"
+                    : activeTool === "line"
+                      ? !drawState ? "Click to start · Esc to cancel" : "Click or type length · Tab for length,angle"
+                      : activeTool === "rectangle"
+                        ? !drawState ? "Click origin · Esc to cancel" : "Click or type w,h · Tab for width,height"
+                        : activeTool === "circle"
+                          ? !drawState ? "Click center · Esc to cancel" : "Click or type radius"
+                          : activeTool === "ellipse"
+                            ? !drawState ? "Click center · Esc to cancel" : "Click or type rx,ry"
+                            : drawState ? "Click or type to set value · Esc to cancel" : "Click to start · Esc to cancel · F to zoom fit"}
       </div>
 
       {/* Editable dimension input overlay */}
