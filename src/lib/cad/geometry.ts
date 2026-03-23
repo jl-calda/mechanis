@@ -1,4 +1,4 @@
-import type { Point2D } from "@/types/cad";
+import type { Point2D, CadEntity } from "@/types/cad";
 
 export function distance(a: Point2D, b: Point2D): number {
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
@@ -1061,3 +1061,185 @@ export function recomputeFilletRadius(
     lineB: { end: geom.tangentB },
   };
 }
+
+/**
+ * Compute an offset (parallel) copy of a CAD entity.
+ * `dist` is the signed offset distance — positive offsets outward
+ * (away from the side the cursor is on), negative inward.
+ * `side` is a point indicating which side to offset toward.
+ * Returns a new entity (or null if the offset is invalid).
+ */
+export function offsetEntity(
+  entity: CadEntity,
+  dist: number,
+  side: Point2D
+): CadEntity | null {
+  if (Math.abs(dist) < 1e-6) return null;
+  const id = generateId();
+  const base = { stroke: entity.stroke, strokeWidth: entity.strokeWidth, locked: false };
+
+  switch (entity.type) {
+    case "line": {
+      const dx = entity.end.x - entity.start.x;
+      const dy = entity.end.y - entity.start.y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len < 1e-6) return null;
+      // Normal directions (two sides)
+      const nx = -dy / len;
+      const ny = dx / len;
+      // Determine which side the cursor is on
+      const mid = midpoint(entity.start, entity.end);
+      const dot = (side.x - mid.x) * nx + (side.y - mid.y) * ny;
+      const sign = dot >= 0 ? 1 : -1;
+      const ox = nx * dist * sign;
+      const oy = ny * dist * sign;
+      return {
+        id, type: "line", ...base,
+        start: { x: entity.start.x + ox, y: entity.start.y + oy },
+        end: { x: entity.end.x + ox, y: entity.end.y + oy },
+        thickness: entity.thickness,
+      };
+    }
+
+    case "rectangle": {
+      // Offset inward or outward
+      const cx = entity.origin.x + entity.width / 2;
+      const cy = entity.origin.y + entity.height / 2;
+      const dot = (side.x - cx) * (side.x - cx > 0 ? 1 : -1);
+      // Determine if offset goes outward (larger) or inward (smaller)
+      const sideDistFromCenter = distance(side, { x: cx, y: cy });
+      const halfDiag = Math.sqrt((entity.width / 2) ** 2 + (entity.height / 2) ** 2);
+      const outward = sideDistFromCenter > halfDiag;
+      const d = outward ? dist : -dist;
+      const newW = entity.width + 2 * d;
+      const newH = entity.height + 2 * d;
+      if (newW <= 0 || newH <= 0) return null;
+      return {
+        id, type: "rectangle", ...base,
+        origin: { x: cx - newW / 2, y: cy - newH / 2 },
+        width: newW, height: newH,
+      };
+    }
+
+    case "circle": {
+      const d = distance(side, entity.center);
+      const outward = d > entity.radius;
+      const newR = outward ? entity.radius + dist : entity.radius - dist;
+      if (newR <= 0) return null;
+      return {
+        id, type: "circle", ...base,
+        center: { ...entity.center }, radius: newR,
+      };
+    }
+
+    case "ellipse": {
+      const dx = (side.x - entity.center.x) / entity.rx;
+      const dy = (side.y - entity.center.y) / entity.ry;
+      const outward = Math.sqrt(dx * dx + dy * dy) > 1;
+      const d = outward ? dist : -dist;
+      const newRx = entity.rx + d;
+      const newRy = entity.ry + d;
+      if (newRx <= 0 || newRy <= 0) return null;
+      return {
+        id, type: "ellipse", ...base,
+        center: { ...entity.center }, rx: newRx, ry: newRy,
+      };
+    }
+
+    case "arc": {
+      const d = distance(side, entity.center);
+      const outward = d > entity.radius;
+      const newR = outward ? entity.radius + dist : entity.radius - dist;
+      if (newR <= 0) return null;
+      return {
+        id, type: "arc", ...base,
+        center: { ...entity.center }, radius: newR,
+        startAngle: entity.startAngle, endAngle: entity.endAngle,
+      };
+    }
+
+    case "polyline": {
+      // Offset each segment by normal, then intersect adjacent offset segments
+      const pts = entity.points;
+      if (pts.length < 2) return null;
+      const closed = entity.closed;
+      const n = pts.length;
+
+      // Compute normals for each segment
+      type Seg = { nx: number; ny: number };
+      const segs: Seg[] = [];
+      const segCount = closed ? n : n - 1;
+      for (let i = 0; i < segCount; i++) {
+        const j = (i + 1) % n;
+        const dx = pts[j].x - pts[i].x;
+        const dy = pts[j].y - pts[i].y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len < 1e-8) { segs.push({ nx: 0, ny: 0 }); continue; }
+        segs.push({ nx: -dy / len, ny: dx / len });
+      }
+
+      // Determine side from centroid of polyline
+      let cx = 0, cy = 0;
+      for (const p of pts) { cx += p.x; cy += p.y; }
+      cx /= n; cy /= n;
+      const sideD = distance(side, { x: cx, y: cy });
+      const avgSize = pts.reduce((s, p) => s + distance(p, { x: cx, y: cy }), 0) / n;
+      const outward = sideD > avgSize;
+      const sign = outward ? 1 : -1;
+
+      // For the first segment, determine correct normal direction
+      if (segs.length > 0 && segs[0].nx !== 0 || segs[0].ny !== 0) {
+        const testMid = midpoint(pts[0], pts[1 % n]);
+        const dotTest = (side.x - testMid.x) * segs[0].nx + (side.y - testMid.y) * segs[0].ny;
+        const normalSign = dotTest >= 0 ? 1 : -1;
+        // Use consistent sign for all segments based on first segment
+        const d = dist * normalSign;
+
+        // Offset each segment and find intersections
+        const offsetPts: Point2D[] = [];
+        for (let i = 0; i < segCount; i++) {
+          const j = (i + 1) % n;
+          const ox = segs[i].nx * d;
+          const oy = segs[i].ny * d;
+          const p1 = { x: pts[i].x + ox, y: pts[i].y + oy };
+          const p2 = { x: pts[j].x + ox, y: pts[j].y + oy };
+
+          if (i === 0 && !closed) {
+            offsetPts.push(p1);
+          }
+
+          // Intersect with next segment's offset
+          const nextI = (i + 1) % segCount;
+          if (nextI !== i && (closed || i < segCount - 1)) {
+            const k = (nextI + 1) % n;
+            const ox2 = segs[nextI].nx * d;
+            const oy2 = segs[nextI].ny * d;
+            const q1 = { x: pts[nextI % n].x + ox2, y: pts[nextI % n].y + oy2 };
+            const q2 = { x: pts[k].x + ox2, y: pts[k].y + oy2 };
+            const inter = lineLineIntersection(p1, p2, q1, q2);
+            if (inter) {
+              offsetPts.push(inter);
+            } else {
+              offsetPts.push(p2);
+            }
+          }
+
+          if (i === segCount - 1 && !closed) {
+            offsetPts.push(p2);
+          }
+        }
+
+        if (offsetPts.length < 2) return null;
+        return {
+          id, type: "polyline", ...base,
+          points: offsetPts, closed: entity.closed, thickness: entity.thickness,
+        };
+      }
+      return null;
+    }
+
+    default:
+      return null;
+  }
+}
+

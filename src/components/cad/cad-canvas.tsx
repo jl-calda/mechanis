@@ -3,7 +3,7 @@
 import { useRef, useCallback, useState, useMemo, useEffect } from "react";
 import type { CadState, Point2D, CadEntity } from "@/types/cad";
 import type { CadAction } from "@/lib/cad-reducer";
-import { snapToGrid, generateId, distance, midpoint, pointNearSegment, pointNearCircle, pointNearEllipse, getEntitySnapPoints, getEntityBounds, trimEntityAtPoint, getTrimPreview, getEntitySegments, hitTestEdge, computeFilletFromEdges, getFilletPreviewFromEdges, arcToPoints, pointInPolygon } from "@/lib/cad/geometry";
+import { snapToGrid, generateId, distance, midpoint, pointNearSegment, pointNearCircle, pointNearEllipse, getEntitySnapPoints, getEntityBounds, trimEntityAtPoint, getTrimPreview, getEntitySegments, hitTestEdge, computeFilletFromEdges, getFilletPreviewFromEdges, arcToPoints, pointInPolygon, offsetEntity } from "@/lib/cad/geometry";
 import type { FilletEdge } from "@/lib/cad/geometry";
 import { manualPickRegion } from "@/lib/cad/region-detect";
 import { CadGrid } from "./cad-grid";
@@ -89,6 +89,11 @@ export function CadCanvas({ state, dispatch }: Props) {
     removedArc?: { center: Point2D; radius: number; startAngle: number; endAngle: number };
   } | null>(null);
 
+  // Offset state
+  const [offsetEntity_, setOffsetEntity] = useState<CadEntity | null>(null);
+  const [offsetDist, setOffsetDist] = useState(1.0);
+  const [offsetPreview, setOffsetPreview] = useState<CadEntity | null>(null);
+
   // Fillet state
   const [filletFirstEdge, setFilletFirstEdge] = useState<FilletEdge | null>(null);
   const [filletRadius, setFilletRadius] = useState(0.25);
@@ -100,7 +105,7 @@ export function CadCanvas({ state, dispatch }: Props) {
   const [filletHoverEdge, setFilletHoverEdge] = useState<FilletEdge | null>(null);
 
   // Region hover preview (throttled — manualPickRegion is expensive)
-  const [regionHover, setRegionHover] = useState<{ boundary: Point2D[]; area: number; isToggle: boolean } | null>(null);
+  const [regionHover, setRegionHover] = useState<{ boundary: Point2D[]; area: number; centroid: Point2D; isToggle: boolean } | null>(null);
   const regionHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const regionHoverPending = useRef<Point2D | null>(null);
 
@@ -438,6 +443,28 @@ export function CadCanvas({ state, dispatch }: Props) {
         return;
       }
 
+      // Offset tool
+      if (activeTool === "offset") {
+        if (!offsetEntity_) {
+          // First click: select entity to offset
+          const hitId = hitTest(world, true);
+          if (hitId) {
+            const ent = entities.find((ent) => ent.id === hitId);
+            if (ent && ent.type !== "dimension" && ent.type !== "point") {
+              setOffsetEntity(ent);
+            }
+          }
+        } else {
+          // Second click: confirm offset with preview
+          if (offsetPreview) {
+            dispatch({ type: "ADD_ENTITY", entity: offsetPreview });
+          }
+          setOffsetEntity(null);
+          setOffsetPreview(null);
+        }
+        return;
+      }
+
       // Region pick — right-click or click existing region toggles sign
       if (activeTool === "region-pick") {
         // Check if clicking inside an existing region — toggle its sign
@@ -634,7 +661,7 @@ export function CadCanvas({ state, dispatch }: Props) {
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
       const world = screenToWorld(e.clientX, e.clientY);
-      const noSnap = activeTool === "trim" || activeTool === "fillet" || activeTool === "region-pick";
+      const noSnap = activeTool === "trim" || activeTool === "fillet" || activeTool === "offset" || activeTool === "region-pick";
       const snapResult = noSnap ? { pt: world, type: null as "grid" | "node" | null } : doSnap(world);
       setCursorPos(snapResult.pt);
       setPreviewPt(snapResult.pt);
@@ -733,20 +760,29 @@ export function CadCanvas({ state, dispatch }: Props) {
         if (filletFirstEdge) setFilletFirstEdge(null);
       }
 
+      // Offset hover preview
+      if (activeTool === "offset" && offsetEntity_) {
+        const result = offsetEntity(offsetEntity_, offsetDist, world);
+        setOffsetPreview(result);
+      } else if (activeTool !== "offset" && offsetEntity_) {
+        setOffsetEntity(null);
+        setOffsetPreview(null);
+      }
+
       // Region hover preview
       if (activeTool === "region-pick") {
         // Check if hovering an existing region (would toggle) — cheap check
-        let hoveredExisting: { boundary: Point2D[]; area: number } | null = null;
+        let hoveredExisting: { boundary: Point2D[]; area: number; centroid: Point2D } | null = null;
         for (const r of regions) {
           if (pointInPolygon(world, r.boundary)) {
             if (!hoveredExisting || r.area < hoveredExisting.area) {
-              hoveredExisting = { boundary: r.boundary, area: r.area };
+              hoveredExisting = { boundary: r.boundary, area: r.area, centroid: r.centroid };
             }
           }
         }
         if (hoveredExisting) {
           if (regionHoverTimer.current) { clearTimeout(regionHoverTimer.current); regionHoverTimer.current = null; }
-          setRegionHover({ boundary: hoveredExisting.boundary, area: hoveredExisting.area, isToggle: true });
+          setRegionHover({ boundary: hoveredExisting.boundary, area: hoveredExisting.area, centroid: hoveredExisting.centroid, isToggle: true });
         } else {
           // Throttle expensive manualPickRegion — debounce 60ms
           regionHoverPending.current = world;
@@ -757,7 +793,7 @@ export function CadCanvas({ state, dispatch }: Props) {
               if (pt) {
                 const preview = manualPickRegion(pt, entities);
                 if (preview) {
-                  setRegionHover({ boundary: preview.boundary, area: preview.area, isToggle: false });
+                  setRegionHover({ boundary: preview.boundary, area: preview.area, centroid: preview.centroid, isToggle: false });
                 } else {
                   setRegionHover(null);
                 }
@@ -770,7 +806,7 @@ export function CadCanvas({ state, dispatch }: Props) {
         if (regionHoverTimer.current) { clearTimeout(regionHoverTimer.current); regionHoverTimer.current = null; }
       }
     },
-    [screenToWorld, doSnap, viewport, dispatch, grid, entities, activeTool, hitTest, trimHover, filletFirstEdge, filletRadius, filletHoverEdge, filletPreview, regions, regionHover]
+    [screenToWorld, doSnap, viewport, dispatch, grid, entities, activeTool, hitTest, trimHover, filletFirstEdge, filletRadius, filletHoverEdge, filletPreview, offsetEntity_, offsetDist, regions, regionHover]
   );
 
   const handlePointerUp = useCallback(() => {
@@ -879,6 +915,7 @@ export function CadCanvas({ state, dispatch }: Props) {
   /** Get tooltip field config for the current tool and draw state */
   const getTooltipConfig = useCallback((tool: string, ds: typeof drawState): { labels: string[]; placeholders: string[]; defaults: string[] } | null => {
     if (tool === "fillet") return { labels: ["r:"], placeholders: [filletRadius.toFixed(2)], defaults: [filletRadius.toFixed(2)] };
+    if (tool === "offset") return { labels: ["d:"], placeholders: [offsetDist.toFixed(2)], defaults: [offsetDist.toFixed(2)] };
     if (!ds || ds.points.length < 1) return null;
     if (tool === "line" || tool === "polyline") {
       const refPt = tool === "polyline" ? ds.points[ds.points.length - 1] : ds.points[0];
@@ -891,7 +928,7 @@ export function CadCanvas({ state, dispatch }: Props) {
     if (tool === "ellipse") return { labels: ["rx:", "ry:"], placeholders: ["1.00", "1.00"], defaults: ["", ""] };
     if (tool === "dimension" && ds.points.length >= 2) return { labels: ["len:"], placeholders: [distance(ds.points[0], ds.points[1]).toFixed(2)], defaults: [""] };
     return null;
-  }, [cursorPos, filletRadius]);
+  }, [cursorPos, filletRadius, offsetDist]);
 
   /** Open the tooltip input with appropriate fields */
   const openTooltipInput = useCallback((tool: string, ds: typeof drawState) => {
@@ -922,6 +959,14 @@ export function CadCanvas({ state, dispatch }: Props) {
     if (activeTool === "fillet") {
       const r = parseFloat(vals[0] || phs[0]);
       if (!isNaN(r) && r > 0) setFilletRadius(r);
+      closeTooltip();
+      return;
+    }
+
+    // Offset distance — update distance state
+    if (activeTool === "offset") {
+      const d = parseFloat(vals[0] || phs[0]);
+      if (!isNaN(d) && d > 0) setOffsetDist(d);
       closeTooltip();
       return;
     }
@@ -980,11 +1025,11 @@ export function CadCanvas({ state, dispatch }: Props) {
         return;
       }
 
-      // Tab opens tooltip input when drawing (or fillet mode)
+      // Tab opens tooltip input when drawing (or fillet/offset mode)
       if (e.key === "Tab") {
         e.preventDefault();
         const hasDrawing = drawState && drawState.points.length >= 1;
-        if (hasDrawing || activeTool === "fillet") {
+        if (hasDrawing || activeTool === "fillet" || activeTool === "offset") {
           openTooltipInput(activeTool, drawState);
         }
         return;
@@ -994,7 +1039,7 @@ export function CadCanvas({ state, dispatch }: Props) {
       const isNumKey = /^[0-9.\-]$/.test(e.key);
       if (isNumKey && !e.ctrlKey && !e.metaKey) {
         const hasDrawing = drawState && drawState.points.length >= 1;
-        if (hasDrawing || activeTool === "fillet") {
+        if (hasDrawing || activeTool === "fillet" || activeTool === "offset") {
           e.preventDefault();
           const cfg = getTooltipConfig(activeTool, drawState);
           if (cfg) {
@@ -1014,6 +1059,9 @@ export function CadCanvas({ state, dispatch }: Props) {
         if (activeTool === "fillet" && filletFirstEdge) {
           setFilletFirstEdge(null);
           setFilletPreview(null);
+        } else if (activeTool === "offset" && offsetEntity_) {
+          setOffsetEntity(null);
+          setOffsetPreview(null);
         } else {
           dispatch({ type: "SET_DRAW_STATE", points: null });
           dispatch({ type: "SET_TOOL", tool: "select" });
@@ -1091,24 +1139,37 @@ export function CadCanvas({ state, dispatch }: Props) {
         <CadRegionOverlay regions={regions} />
 
         {/* Region hover preview */}
-        {regionHover && (
-          <path
-            d={regionHover.boundary.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ") + " Z"}
-            fill={regionHover.isToggle ? "#f43f5e" : "var(--primary)"}
-            fillOpacity={0.15}
-            stroke={regionHover.isToggle ? "#f43f5e" : "var(--primary)"}
-            strokeWidth={0.06}
-            strokeDasharray="0.12 0.06"
-            style={{ pointerEvents: "none" }}
-          />
-        )}
+        {regionHover && (() => {
+          const color = regionHover.isToggle ? "#f43f5e" : "var(--primary)";
+          const { centroid: c, area } = regionHover;
+          const label = `${area.toFixed(2)} in\u00B2`;
+          return (
+            <g style={{ pointerEvents: "none" }}>
+              <path
+                d={regionHover.boundary.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ") + " Z"}
+                fill={color}
+                fillOpacity={0.15}
+                stroke={color}
+                strokeWidth={0.06}
+                strokeDasharray="0.12 0.06"
+              />
+              {/* Centroid crosshair */}
+              <circle cx={c.x} cy={c.y} r={0.14} fill="none" stroke={color} strokeWidth={0.04} />
+              <line x1={c.x - 0.22} y1={c.y} x2={c.x + 0.22} y2={c.y} stroke={color} strokeWidth={0.03} />
+              <line x1={c.x} y1={c.y - 0.22} x2={c.x} y2={c.y + 0.22} stroke={color} strokeWidth={0.03} />
+              {/* Area label */}
+              <rect x={c.x - label.length * 0.1} y={c.y + 0.3} width={label.length * 0.2} height={0.4} rx={0.06} fill="var(--surface)" fillOpacity={0.85} stroke={color} strokeWidth={0.02} />
+              <text x={c.x} y={c.y + 0.58} fill={color} fontSize={0.28} fontWeight="bold" textAnchor="middle" fontFamily="var(--font-mono)">{label}</text>
+            </g>
+          );
+        })()}
 
         {/* Entities */}
         {entities.map((e) => (
           <CadEntityRenderer
             key={e.id}
             entity={e}
-            selected={selectedIds.includes(e.id) || (activeTool === "fillet" && filletFirstEdge?.entityId === e.id)}
+            selected={selectedIds.includes(e.id) || (activeTool === "fillet" && filletFirstEdge?.entityId === e.id) || (activeTool === "offset" && offsetEntity_?.id === e.id)}
             trimHover={
               (activeTool === "trim" && trimHover?.entityId === e.id) ||
               (activeTool === "fillet" && filletHoverEdge?.entityId === e.id && filletFirstEdge?.entityId !== e.id)
@@ -1162,6 +1223,11 @@ export function CadCanvas({ state, dispatch }: Props) {
             <circle cx={filletPreview.tangentA.x} cy={filletPreview.tangentA.y} r={0.1} fill="var(--primary)" opacity={0.6} />
             <circle cx={filletPreview.tangentB.x} cy={filletPreview.tangentB.y} r={0.1} fill="var(--primary)" opacity={0.6} />
           </g>
+        )}
+
+        {/* Offset preview — show entity that would be created */}
+        {activeTool === "offset" && offsetPreview && (
+          <CadEntityRenderer entity={offsetPreview} selected={false} trimHover={true} />
         )}
 
         {/* Snap point indicators */}
@@ -1406,6 +1472,11 @@ export function CadCanvas({ state, dispatch }: Props) {
           {activeTool === "fillet" && (
             <><span className="text-border mx-1">|</span><span className="text-muted">r=</span><span className="text-primary">{filletRadius.toFixed(2)}</span> <span className="text-muted/40 ml-1">[Tab] to edit</span></>
           )}
+
+          {/* Offset distance display */}
+          {activeTool === "offset" && (
+            <><span className="text-border mx-1">|</span><span className="text-muted">d=</span><span className="text-primary">{offsetDist.toFixed(2)}</span>{!offsetEntity_ ? <span className="text-muted/40 ml-1">click entity · [Tab] to set d</span> : <span className="text-muted/40 ml-1">click side to offset</span>}</>
+          )}
         </div>
       )}
 
@@ -1483,7 +1554,9 @@ export function CadCanvas({ state, dispatch }: Props) {
                 ? "Hover to highlight · Click to trim"
                 : activeTool === "fillet"
                   ? !filletFirstEdge ? `Click first edge · Tab to set r=${filletRadius}` : "Click second edge to fillet"
-                  : activeTool === "region-pick"
+                  : activeTool === "offset"
+                    ? !offsetEntity_ ? `Click entity to offset · Tab to set d=${offsetDist}` : "Click side to place offset"
+                    : activeTool === "region-pick"
                     ? "Click shape to add region · Click region to toggle +/−"
                     : activeTool === "line"
                       ? !drawState ? "Click to start · Esc to cancel" : "Click or type length · Tab for length,angle"

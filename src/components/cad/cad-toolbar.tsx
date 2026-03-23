@@ -13,6 +13,7 @@ import {
   Ruler,
   Scissors,
   CornerDownRight,
+  CopyPlus,
   ScanSearch,
   Grid3x3,
   Magnet,
@@ -53,6 +54,7 @@ const tools: { tool: ToolType; icon: typeof MousePointer2; label: string }[] = [
   { tool: "dimension", icon: Ruler, label: "Dimension" },
   { tool: "trim", icon: Scissors, label: "Trim" },
   { tool: "fillet", icon: CornerDownRight, label: "Fillet" },
+  { tool: "offset", icon: CopyPlus, label: "Offset" },
   { tool: "region-pick", icon: ScanSearch, label: "Pick Region" },
 ];
 

@@ -9,6 +9,7 @@ export type ToolType =
   | "dimension"
   | "trim"
   | "fillet"
+  | "offset"
   | "pan"
   | "region-pick";
 
