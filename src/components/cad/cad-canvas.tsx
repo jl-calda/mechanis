@@ -536,6 +536,7 @@ export function CadCanvas({ state, dispatch }: Props) {
           const origin = drawState.points[0];
           dispatch({ type: "ADD_ENTITY", entity: { id: generateId(), type: "rectangle", origin: { x: Math.min(origin.x, pt.x), y: Math.min(origin.y, pt.y) }, width: Math.abs(pt.x - origin.x), height: Math.abs(pt.y - origin.y), stroke: "", strokeWidth: 1, locked: false } });
           dispatch({ type: "SET_DRAW_STATE", points: null });
+          dispatch({ type: "SET_TOOL", tool: "select" });
         }
         return;
       }
@@ -1091,6 +1092,7 @@ export function CadCanvas({ state, dispatch }: Props) {
       if (isNaN(w) || w <= 0 || isNaN(h) || h <= 0) { closeTooltip(); return; }
       dispatch({ type: "ADD_ENTITY", entity: { id: generateId(), type: "rectangle", origin: start, width: w, height: h, stroke: "", strokeWidth: 1, locked: false } });
       dispatch({ type: "SET_DRAW_STATE", points: null });
+      dispatch({ type: "SET_TOOL", tool: "select" });
     } else if (activeTool === "circle") {
       const r = parseFloat(vals[0] || phs[0]);
       if (isNaN(r) || r <= 0) { closeTooltip(); return; }
