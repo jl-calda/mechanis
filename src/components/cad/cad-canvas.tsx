@@ -151,21 +151,6 @@ export function CadCanvas({ state, dispatch }: Props) {
     }
   }, [dispatch]);
 
-  // Auto zoom-to-fit on first entity added
-  const prevCount = useRef(0);
-  useEffect(() => {
-    if (entities.length > 0 && prevCount.current === 0) {
-      const svg = svgRef.current;
-      if (svg) {
-        dispatch({
-          type: "ZOOM_TO_FIT",
-          canvasWidth: svg.clientWidth,
-          canvasHeight: svg.clientHeight,
-        });
-      }
-    }
-    prevCount.current = entities.length;
-  }, [entities.length, dispatch]);
 
   // Convert screen coords to SVG world coords
   const screenToWorld = useCallback(
