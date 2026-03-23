@@ -226,6 +226,14 @@ export function cadReducer(state: CadState, action: CadAction): CadState {
             return handleIndex === 0
               ? { ...e, startPt: newPos }
               : { ...e, endPt: newPos };
+          case "arc": {
+            if (handleIndex === 0) return { ...e, center: newPos };
+            // Handles 1,2 are start/end of arc — adjust angle to match new position
+            const ang = Math.atan2(newPos.y - e.center.y, newPos.x - e.center.x);
+            const r = Math.sqrt((newPos.x - e.center.x) ** 2 + (newPos.y - e.center.y) ** 2);
+            if (handleIndex === 1) return { ...e, startAngle: ang, radius: Math.max(0.01, r) };
+            return { ...e, endAngle: ang, radius: Math.max(0.01, r) };
+          }
           default:
             return e;
         }
@@ -286,6 +294,8 @@ export function cadReducer(state: CadState, action: CadAction): CadState {
               startPt: { x: e.startPt.x + dx, y: e.startPt.y + dy },
               endPt: { x: e.endPt.x + dx, y: e.endPt.y + dy },
             };
+          case "arc":
+            return { ...e, center: { x: e.center.x + dx, y: e.center.y + dy } };
           default:
             return e;
         }

@@ -3,7 +3,7 @@
 import { useRef, useCallback, useState, useMemo, useEffect } from "react";
 import type { CadState, Point2D, CadEntity } from "@/types/cad";
 import type { CadAction } from "@/lib/cad-reducer";
-import { snapToGrid, generateId, distance, midpoint, pointNearSegment, pointNearCircle, pointNearEllipse, getEntitySnapPoints, getEntityBounds, trimEntityAtPoint, getTrimPreview, getEntitySegments, hitTestEdge, computeFilletFromEdges, getFilletPreviewFromEdges } from "@/lib/cad/geometry";
+import { snapToGrid, generateId, distance, midpoint, pointNearSegment, pointNearCircle, pointNearEllipse, getEntitySnapPoints, getEntityBounds, trimEntityAtPoint, getTrimPreview, getEntitySegments, hitTestEdge, computeFilletFromEdges, getFilletPreviewFromEdges, arcToPoints } from "@/lib/cad/geometry";
 import type { FilletEdge } from "@/lib/cad/geometry";
 import { manualPickRegion } from "@/lib/cad/region-detect";
 import { CadGrid } from "./cad-grid";
@@ -62,6 +62,11 @@ function getHandlePositions(e: CadEntity): Point2D[] {
     case "circle": return [e.center, { x: e.center.x + e.radius, y: e.center.y }, { x: e.center.x, y: e.center.y - e.radius }];
     case "ellipse": return [e.center, { x: e.center.x + e.rx, y: e.center.y }, { x: e.center.x, y: e.center.y - e.ry }];
     case "dimension": return [e.startPt, e.endPt];
+    case "arc": return [
+      e.center,
+      { x: e.center.x + e.radius * Math.cos(e.startAngle), y: e.center.y + e.radius * Math.sin(e.startAngle) },
+      { x: e.center.x + e.radius * Math.cos(e.endAngle), y: e.center.y + e.radius * Math.sin(e.endAngle) },
+    ];
     default: return [];
   }
 }
@@ -260,6 +265,13 @@ export function CadCanvas({ state, dispatch }: Props) {
             const ds = { x: e.startPt.x + px * e.offset, y: e.startPt.y + py * e.offset };
             const de = { x: e.endPt.x + px * e.offset, y: e.endPt.y + py * e.offset };
             if (pointNearSegment(p, ds, de, tol * 2)) return e.id;
+            break;
+          }
+          case "arc": {
+            const pts = arcToPoints(e.center, e.radius, e.startAngle, e.endAngle, 16);
+            for (let j = 0; j < pts.length - 1; j++) {
+              if (pointNearSegment(p, pts[j], pts[j + 1], tol)) return e.id;
+            }
             break;
           }
         }

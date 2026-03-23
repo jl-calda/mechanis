@@ -7,6 +7,7 @@ import {
   pointInPolygon,
   segmentIntersection,
   distance,
+  arcToPoints,
 } from "./geometry";
 import { computeRegionProps } from "./section-props";
 
@@ -42,6 +43,11 @@ function collectAllSegments(entities: CadEntity[]): [Point2D, Point2D][] {
       case "ellipse": {
         const pts = ellipseToPolygon(e.center, e.rx, e.ry, 48);
         for (let i = 0; i < pts.length; i++) segs.push([pts[i], pts[(i + 1) % pts.length]]);
+        break;
+      }
+      case "arc": {
+        const pts = arcToPoints(e.center, e.radius, e.startAngle, e.endAngle, 16);
+        for (let i = 0; i < pts.length - 1; i++) segs.push([pts[i], pts[i + 1]]);
         break;
       }
     }

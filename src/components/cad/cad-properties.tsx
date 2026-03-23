@@ -235,6 +235,42 @@ export function CadProperties({ entity, onChange }: Props) {
           />
         </>
       )}
+
+      {entity.type === "arc" && (
+        <>
+          <div className="grid grid-cols-2 gap-1.5">
+            <NumField
+              label="Center X"
+              value={entity.center.x}
+              onChange={(x) => set({ center: { ...entity.center, x } } as never)}
+            />
+            <NumField
+              label="Center Y"
+              value={entity.center.y}
+              onChange={(y) => set({ center: { ...entity.center, y } } as never)}
+            />
+          </div>
+          <NumField
+            label="Radius"
+            value={entity.radius}
+            onChange={(radius) => set({ radius } as never)}
+          />
+          <div className="grid grid-cols-2 gap-1.5">
+            <NumField
+              label="Start °"
+              value={+(entity.startAngle * 180 / Math.PI).toFixed(1)}
+              onChange={(deg) => set({ startAngle: deg * Math.PI / 180 } as never)}
+              step={1}
+            />
+            <NumField
+              label="End °"
+              value={+(entity.endAngle * 180 / Math.PI).toFixed(1)}
+              onChange={(deg) => set({ endAngle: deg * Math.PI / 180 } as never)}
+              step={1}
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }

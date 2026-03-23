@@ -94,6 +94,7 @@ export default function CadPage() {
                   `rx=${e.rx.toFixed(2)} ry=${e.ry.toFixed(2)}`}
                 {e.type === "dimension" &&
                   `${e.labelOverride ?? distance(e.startPt, e.endPt).toFixed(2)}″`}
+                {e.type === "arc" && `r=${e.radius.toFixed(2)}`}
               </button>
             ))
           )}

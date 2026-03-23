@@ -240,6 +240,40 @@ export function CadEntityRenderer({ entity, selected, trimHover }: Props) {
         </g>
       );
 
+    case "arc": {
+      const { center, radius, startAngle, endAngle } = entity;
+      // Compute sweep (always go from startAngle to endAngle in the shorter direction)
+      let sweep = endAngle - startAngle;
+      if (sweep > Math.PI) sweep -= 2 * Math.PI;
+      if (sweep < -Math.PI) sweep += 2 * Math.PI;
+      const largeArc = Math.abs(sweep) > Math.PI ? 1 : 0;
+      const sweepFlag = sweep > 0 ? 1 : 0;
+      const sx = center.x + radius * Math.cos(startAngle);
+      const sy = center.y + radius * Math.sin(startAngle);
+      const ex = center.x + radius * Math.cos(endAngle);
+      const ey = center.y + radius * Math.sin(endAngle);
+      return (
+        <g>
+          <path
+            d={`M ${sx} ${sy} A ${radius} ${radius} 0 ${largeArc} ${sweepFlag} ${ex} ${ey}`}
+            fill="none"
+            stroke={stroke}
+            strokeWidth={sw}
+            strokeLinecap="round"
+          />
+          <NodeDot x={sx} y={sy} />
+          <NodeDot x={ex} y={ey} />
+          {selected && (
+            <>
+              <Handle x={center.x} y={center.y} index={0} entityId={entity.id} isLocked={isHL(0)} />
+              <Handle x={sx} y={sy} index={1} entityId={entity.id} isLocked={isHL(1)} />
+              <Handle x={ex} y={ey} index={2} entityId={entity.id} isLocked={isHL(2)} />
+            </>
+          )}
+        </g>
+      );
+    }
+
     case "dimension": {
       const { startPt, endPt, offset, labelOverride } = entity;
       const dx = endPt.x - startPt.x;

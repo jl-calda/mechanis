@@ -159,9 +159,29 @@ export function getEntitySegments(e: import("@/types/cad").CadEntity): [Point2D,
       if (e.closed && e.points.length >= 3) segs.push([e.points[e.points.length - 1], e.points[0]]);
       return segs;
     }
+    case "arc": {
+      const pts = arcToPoints(e.center, e.radius, e.startAngle, e.endAngle, 16);
+      const segs: [Point2D, Point2D][] = [];
+      for (let i = 0; i < pts.length - 1; i++) segs.push([pts[i], pts[i + 1]]);
+      return segs;
+    }
     default:
       return [];
   }
+}
+
+/** Convert an arc to a series of points for approximation */
+export function arcToPoints(center: Point2D, radius: number, startAngle: number, endAngle: number, numPts: number = 16): Point2D[] {
+  let sweep = endAngle - startAngle;
+  if (sweep > Math.PI) sweep -= 2 * Math.PI;
+  if (sweep < -Math.PI) sweep += 2 * Math.PI;
+  const pts: Point2D[] = [];
+  for (let i = 0; i <= numPts; i++) {
+    const t = i / numPts;
+    const angle = startAngle + sweep * t;
+    pts.push({ x: center.x + radius * Math.cos(angle), y: center.y + radius * Math.sin(angle) });
+  }
+  return pts;
 }
 
 /**
@@ -260,6 +280,11 @@ function getEntityEndpoints(e: import("@/types/cad").CadEntity): Point2D[] {
       ];
     case "point":
       return [e.position];
+    case "arc":
+      return [
+        { x: e.center.x + e.radius * Math.cos(e.startAngle), y: e.center.y + e.radius * Math.sin(e.startAngle) },
+        { x: e.center.x + e.radius * Math.cos(e.endAngle), y: e.center.y + e.radius * Math.sin(e.endAngle) },
+      ];
     default:
       return [];
   }
@@ -470,6 +495,12 @@ export function getEntitySnapPoints(e: import("@/types/cad").CadEntity): Point2D
     case "dimension":
       pts.push(e.startPt, e.endPt);
       break;
+    case "arc": {
+      const sp = { x: e.center.x + e.radius * Math.cos(e.startAngle), y: e.center.y + e.radius * Math.sin(e.startAngle) };
+      const ep = { x: e.center.x + e.radius * Math.cos(e.endAngle), y: e.center.y + e.radius * Math.sin(e.endAngle) };
+      pts.push(sp, ep, e.center, midpoint(sp, ep));
+      break;
+    }
   }
   return pts;
 }
@@ -501,6 +532,12 @@ export function getEntityBounds(e: import("@/types/cad").CadEntity): { minX: num
       const px = -dy / len * e.offset;
       const py = dx / len * e.offset;
       const pts = [e.startPt, e.endPt, { x: e.startPt.x + px, y: e.startPt.y + py }, { x: e.endPt.x + px, y: e.endPt.y + py }];
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of pts) { minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); }
+      return { minX, minY, maxX, maxY };
+    }
+    case "arc": {
+      const pts = arcToPoints(e.center, e.radius, e.startAngle, e.endAngle, 16);
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       for (const p of pts) { minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); }
       return { minX, minY, maxX, maxY };
@@ -581,7 +618,7 @@ function computeFilletGeometry(
   segA: { start: Point2D; end: Point2D },
   segB: { start: Point2D; end: Point2D },
   radius: number
-): { arcPoints: Point2D[]; tangentA: Point2D; tangentB: Point2D; corner: Point2D; farA: Point2D; farB: Point2D } | null {
+): { arcPoints: Point2D[]; tangentA: Point2D; tangentB: Point2D; corner: Point2D; farA: Point2D; farB: Point2D; arcCenter: Point2D; arcRadius: number; arcStartAngle: number; arcEndAngle: number } | null {
   const corner = lineLineIntersection(segA.start, segA.end, segB.start, segB.end);
   if (!corner) return null;
 
@@ -638,7 +675,7 @@ function computeFilletGeometry(
     });
   }
 
-  return { arcPoints, tangentA: tA, tangentB: tB, corner, farA, farB };
+  return { arcPoints, tangentA: tA, tangentB: tB, corner, farA, farB, arcCenter: center, arcRadius: radius, arcStartAngle: startAngle, arcEndAngle: endAngle };
 }
 
 /**
@@ -679,14 +716,15 @@ export function computeFilletFromEdges(
 
   const base = { stroke: entityA.stroke, strokeWidth: entityA.strokeWidth, locked: false };
 
-  // Arc polyline
-  const arc: import("@/types/cad").PolylineEntity = {
+  // True arc entity
+  const arc: import("@/types/cad").ArcEntity = {
     ...base,
     id: generateId(),
-    type: "polyline",
-    points: geom.arcPoints,
-    closed: false,
-    thickness: 0,
+    type: "arc",
+    center: geom.arcCenter,
+    radius: geom.arcRadius,
+    startAngle: geom.arcStartAngle,
+    endAngle: geom.arcEndAngle,
   };
 
   const removedIds: string[] = [];

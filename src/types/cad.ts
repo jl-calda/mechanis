@@ -75,6 +75,14 @@ export interface DimensionEntity extends CadEntityBase {
   labelOverride: string | null;
 }
 
+export interface ArcEntity extends CadEntityBase {
+  type: "arc";
+  center: Point2D;
+  radius: number;
+  startAngle: number; // radians
+  endAngle: number;   // radians
+}
+
 export type CadEntity =
   | PointEntity
   | LineEntity
@@ -82,7 +90,8 @@ export type CadEntity =
   | PolylineEntity
   | CircleEntity
   | EllipseEntity
-  | DimensionEntity;
+  | DimensionEntity
+  | ArcEntity;
 
 // --- Closed region ---
 
