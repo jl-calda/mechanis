@@ -201,40 +201,53 @@ export function CadProperties({ entity, onChange }: Props) {
         </>
       )}
 
-      {entity.type === "dimension" && (
-        <>
-          <div className="grid grid-cols-2 gap-1.5">
-            <NumField
-              label="Start X"
-              value={entity.startPt.x}
-              onChange={(x) => set({ startPt: { ...entity.startPt, x } } as never)}
-            />
-            <NumField
-              label="Start Y"
-              value={entity.startPt.y}
-              onChange={(y) => set({ startPt: { ...entity.startPt, y } } as never)}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-1.5">
-            <NumField
-              label="End X"
-              value={entity.endPt.x}
-              onChange={(x) => set({ endPt: { ...entity.endPt, x } } as never)}
-            />
-            <NumField
-              label="End Y"
-              value={entity.endPt.y}
-              onChange={(y) => set({ endPt: { ...entity.endPt, y } } as never)}
-            />
-          </div>
-          <NumField
-            label="Offset"
-            value={entity.offset}
-            onChange={(offset) => set({ offset } as never)}
-            step={0.1}
-          />
-        </>
-      )}
+      {entity.type === "dimension" && (() => {
+        const dt = entity.dimType ?? "linear";
+        if (dt === "radius") {
+          const r = Math.sqrt((entity.endPt.x - entity.startPt.x) ** 2 + (entity.endPt.y - entity.startPt.y) ** 2);
+          return (
+            <>
+              <div className="text-[10px] text-muted mb-1">Radius Dimension</div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <NumField label="Center X" value={entity.startPt.x} onChange={(x) => set({ startPt: { ...entity.startPt, x } } as never)} />
+                <NumField label="Center Y" value={entity.startPt.y} onChange={(y) => set({ startPt: { ...entity.startPt, y } } as never)} />
+              </div>
+              <div className="text-[10px] text-muted mt-1">Radius: {r.toFixed(3)}</div>
+              <NumField label="Label Offset" value={entity.offset} onChange={(offset) => set({ offset } as never)} step={0.1} />
+            </>
+          );
+        }
+        if (dt === "arc-length" || dt === "angle") {
+          let sweep = (entity.arcEndAngle ?? 0) - (entity.arcStartAngle ?? 0);
+          while (sweep < 0) sweep += 2 * Math.PI;
+          while (sweep > 2 * Math.PI) sweep -= 2 * Math.PI;
+          if (sweep === 0) sweep = 2 * Math.PI;
+          const arcLen = (entity.arcRadius ?? 0) * sweep;
+          const angleDeg = sweep * 180 / Math.PI;
+          return (
+            <>
+              <div className="text-[10px] text-muted mb-1">Arc Dimension</div>
+              <div className="text-[10px] text-muted mt-1">Angle: {angleDeg.toFixed(1)}°</div>
+              <div className="text-[10px] text-muted">Arc Length: {arcLen.toFixed(3)}</div>
+              <div className="text-[10px] text-muted">Radius: {(entity.arcRadius ?? 0).toFixed(3)}</div>
+              <NumField label="Label Offset" value={entity.offset} onChange={(offset) => set({ offset } as never)} step={0.1} />
+            </>
+          );
+        }
+        return (
+          <>
+            <div className="grid grid-cols-2 gap-1.5">
+              <NumField label="Start X" value={entity.startPt.x} onChange={(x) => set({ startPt: { ...entity.startPt, x } } as never)} />
+              <NumField label="Start Y" value={entity.startPt.y} onChange={(y) => set({ startPt: { ...entity.startPt, y } } as never)} />
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              <NumField label="End X" value={entity.endPt.x} onChange={(x) => set({ endPt: { ...entity.endPt, x } } as never)} />
+              <NumField label="End Y" value={entity.endPt.y} onChange={(y) => set({ endPt: { ...entity.endPt, y } } as never)} />
+            </div>
+            <NumField label="Offset" value={entity.offset} onChange={(offset) => set({ offset } as never)} step={0.1} />
+          </>
+        );
+      })()}
 
       {entity.type === "arc" && (
         <>

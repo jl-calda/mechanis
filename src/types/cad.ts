@@ -69,10 +69,16 @@ export interface EllipseEntity extends CadEntityBase {
 
 export interface DimensionEntity extends CadEntityBase {
   type: "dimension";
+  dimType?: "linear" | "radius" | "angle" | "arc-length";
   startPt: Point2D;
   endPt: Point2D;
   offset: number;
   labelOverride: string | null;
+  // arc/angle dimensions: arc geometry
+  arcCenter?: Point2D;
+  arcRadius?: number;
+  arcStartAngle?: number;
+  arcEndAngle?: number;
 }
 
 export interface ArcEntity extends CadEntityBase {

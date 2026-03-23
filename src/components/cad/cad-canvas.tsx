@@ -61,7 +61,11 @@ function getHandlePositions(e: CadEntity): Point2D[] {
     case "polyline": return e.points;
     case "circle": return [e.center, { x: e.center.x + e.radius, y: e.center.y }, { x: e.center.x, y: e.center.y - e.radius }];
     case "ellipse": return [e.center, { x: e.center.x + e.rx, y: e.center.y }, { x: e.center.x, y: e.center.y - e.ry }];
-    case "dimension": return [e.startPt, e.endPt];
+    case "dimension": {
+      const dt = e.dimType ?? "linear";
+      if (dt === "arc-length" || dt === "angle") return e.arcCenter ? [e.arcCenter] : [];
+      return [e.startPt, e.endPt];
+    }
     case "arc": return [
       e.center,
       { x: e.center.x + e.radius * Math.cos(e.startAngle), y: e.center.y + e.radius * Math.sin(e.startAngle) },
@@ -129,6 +133,20 @@ export function CadCanvas({ state, dispatch }: Props) {
     value: string;
     screenX: number;
     screenY: number;
+  } | null>(null);
+
+  // Dimension tool sub-mode: tracks detected entity for radius/arc dims
+  const [dimMode, setDimMode] = useState<{
+    type: "radius";
+    center: Point2D;
+    radius: number;
+    rimPt: Point2D;
+  } | {
+    type: "arc";
+    center: Point2D;
+    radius: number;
+    startAngle: number;
+    endAngle: number;
   } | null>(null);
 
   const { viewport, grid, entities, selectedIds, activeTool, drawState, regions } = state;
@@ -242,15 +260,43 @@ export function CadCanvas({ state, dispatch }: Props) {
             if (pointNearEllipse(p, e.center, e.rx, e.ry, tol)) return e.id;
             break;
           case "dimension": {
-            const dx = e.endPt.x - e.startPt.x;
-            const dy = e.endPt.y - e.startPt.y;
-            const len = distance(e.startPt, e.endPt);
-            if (len < 0.001) break;
-            const px = -dy / len;
-            const py = dx / len;
-            const ds = { x: e.startPt.x + px * e.offset, y: e.startPt.y + py * e.offset };
-            const de = { x: e.endPt.x + px * e.offset, y: e.endPt.y + py * e.offset };
-            if (pointNearSegment(p, ds, de, tol * 2)) return e.id;
+            const dt = e.dimType ?? "linear";
+            if (dt === "radius") {
+              // Hit test the leader line from center to rim+offset
+              const dx = e.endPt.x - e.startPt.x;
+              const dy = e.endPt.y - e.startPt.y;
+              const r = Math.sqrt(dx * dx + dy * dy);
+              if (r > 0.001) {
+                const ux = dx / r;
+                const uy = dy / r;
+                const endX = e.startPt.x + ux * (r + e.offset);
+                const endY = e.startPt.y + uy * (r + e.offset);
+                if (pointNearSegment(p, e.startPt, { x: endX, y: endY }, tol * 2)) return e.id;
+              }
+            } else if (dt === "arc-length" || dt === "angle") {
+              if (e.arcCenter && e.arcRadius != null && e.arcStartAngle != null && e.arcEndAngle != null) {
+                const dimR = e.arcRadius + e.offset;
+                if (Math.abs(distance(p, e.arcCenter) - dimR) <= tol * 2) {
+                  // Check if within the angular range
+                  let a = Math.atan2(p.y - e.arcCenter.y, p.x - e.arcCenter.x);
+                  let sweep = e.arcEndAngle - e.arcStartAngle;
+                  while (sweep < 0) sweep += 2 * Math.PI;
+                  let rel = a - e.arcStartAngle;
+                  while (rel < 0) rel += 2 * Math.PI;
+                  if (rel <= sweep + 0.1) return e.id;
+                }
+              }
+            } else {
+              const dx = e.endPt.x - e.startPt.x;
+              const dy = e.endPt.y - e.startPt.y;
+              const len = distance(e.startPt, e.endPt);
+              if (len < 0.001) break;
+              const px = -dy / len;
+              const py = dx / len;
+              const ds = { x: e.startPt.x + px * e.offset, y: e.startPt.y + py * e.offset };
+              const de = { x: e.endPt.x + px * e.offset, y: e.endPt.y + py * e.offset };
+              if (pointNearSegment(p, ds, de, tol * 2)) return e.id;
+            }
             break;
           }
           case "arc": {
@@ -470,10 +516,82 @@ export function CadCanvas({ state, dispatch }: Props) {
       }
       if (activeTool === "dimension") {
         if (!drawState) {
-          dispatch({ type: "SET_DRAW_STATE", points: [pt] });
+          // First click: detect if we hit a circle or arc edge
+          const tol = 0.5 / viewport.zoom;
+          let detected = false;
+          for (let i = entities.length - 1; i >= 0; i--) {
+            const ent = entities[i];
+            if (ent.type === "circle" && pointNearCircle(world, ent.center, ent.radius, tol)) {
+              // Radius dimension mode
+              const angle = Math.atan2(world.y - ent.center.y, world.x - ent.center.x);
+              const rimPt = { x: ent.center.x + ent.radius * Math.cos(angle), y: ent.center.y + ent.radius * Math.sin(angle) };
+              setDimMode({ type: "radius", center: ent.center, radius: ent.radius, rimPt });
+              dispatch({ type: "SET_DRAW_STATE", points: [rimPt] });
+              detected = true;
+              break;
+            }
+            if (ent.type === "arc") {
+              // Check if click is near the arc outline
+              const pts = arcToPoints(ent.center, ent.radius, ent.startAngle, ent.endAngle, 32);
+              let nearArc = false;
+              for (let j = 0; j < pts.length - 1; j++) {
+                if (pointNearSegment(world, pts[j], pts[j + 1], tol)) { nearArc = true; break; }
+              }
+              if (nearArc) {
+                setDimMode({ type: "arc", center: ent.center, radius: ent.radius, startAngle: ent.startAngle, endAngle: ent.endAngle });
+                dispatch({ type: "SET_DRAW_STATE", points: [world] });
+                detected = true;
+                break;
+              }
+            }
+          }
+          if (!detected) {
+            setDimMode(null);
+            dispatch({ type: "SET_DRAW_STATE", points: [pt] });
+          }
+        } else if (dimMode?.type === "radius" && drawState.points.length === 1) {
+          // Second click for radius dim: position the label
+          const { center, radius, rimPt } = dimMode;
+          const dx = rimPt.x - center.x;
+          const dy = rimPt.y - center.y;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          // offset = how far the label extends beyond the rim (signed along radius direction)
+          const ux = dx / len;
+          const uy = dy / len;
+          const proj = (world.x - center.x) * ux + (world.y - center.y) * uy;
+          const offset = Math.max(proj - radius, 0.3);
+          dispatch({ type: "ADD_ENTITY", entity: {
+            id: generateId(), type: "dimension", dimType: "radius",
+            startPt: center, endPt: rimPt, offset,
+            labelOverride: null, stroke: "", strokeWidth: 1, locked: false,
+          }});
+          dispatch({ type: "SET_DRAW_STATE", points: null });
+          setDimMode(null);
+        } else if (dimMode?.type === "arc" && drawState.points.length === 1) {
+          // Second click for arc dim: position the label offset
+          const { center, radius, startAngle, endAngle } = dimMode;
+          const distFromCenter = distance(world, center);
+          const offset = Math.max(distFromCenter - radius, 0.3);
+          // Compute midpoint of arc for label placement
+          let sweep = endAngle - startAngle;
+          while (sweep < 0) sweep += 2 * Math.PI;
+          while (sweep > 2 * Math.PI) sweep -= 2 * Math.PI;
+          if (sweep === 0) sweep = 2 * Math.PI;
+          const midAngle = startAngle + sweep / 2;
+          const midPt = { x: center.x + radius * Math.cos(midAngle), y: center.y + radius * Math.sin(midAngle) };
+          dispatch({ type: "ADD_ENTITY", entity: {
+            id: generateId(), type: "dimension", dimType: "arc-length",
+            startPt: midPt, endPt: midPt, offset,
+            arcCenter: center, arcRadius: radius, arcStartAngle: startAngle, arcEndAngle: endAngle,
+            labelOverride: null, stroke: "", strokeWidth: 1, locked: false,
+          }});
+          dispatch({ type: "SET_DRAW_STATE", points: null });
+          setDimMode(null);
         } else if (drawState.points.length === 1) {
+          // Linear dimension: second click
           dispatch({ type: "SET_DRAW_STATE", points: [...drawState.points, pt] });
         } else if (drawState.points.length === 2) {
+          // Linear dimension: third click (offset)
           const p1 = drawState.points[0];
           const p2 = drawState.points[1];
           const dx = p2.x - p1.x;
@@ -486,13 +604,13 @@ export function CadCanvas({ state, dispatch }: Props) {
             offset = (world.x - p1.x) * nx + (world.y - p1.y) * ny;
             if (Math.abs(offset) < 0.2) offset = offset >= 0 ? 0.5 : -0.5;
           }
-          dispatch({ type: "ADD_ENTITY", entity: { id: generateId(), type: "dimension", startPt: p1, endPt: p2, offset, labelOverride: null, stroke: "", strokeWidth: 1, locked: false } });
+          dispatch({ type: "ADD_ENTITY", entity: { id: generateId(), type: "dimension", dimType: "linear", startPt: p1, endPt: p2, offset, labelOverride: null, stroke: "", strokeWidth: 1, locked: false } });
           dispatch({ type: "SET_DRAW_STATE", points: null });
         }
         return;
       }
     },
-    [activeTool, drawState, screenToWorld, doSnap, hitTest, dispatch, entities, viewport, selectedIds, editingDim, filletFirstEdge, filletRadius, showTooltipInput]
+    [activeTool, drawState, screenToWorld, doSnap, hitTest, dispatch, entities, viewport, selectedIds, editingDim, filletFirstEdge, filletRadius, showTooltipInput, dimMode]
   );
 
   const handlePointerMove = useCallback(
@@ -844,6 +962,7 @@ export function CadCanvas({ state, dispatch }: Props) {
         } else {
           dispatch({ type: "SET_DRAW_STATE", points: null });
           dispatch({ type: "SET_TOOL", tool: "select" });
+          setDimMode(null);
         }
       }
       if ((e.key === "Delete" || e.key === "Backspace") && selectedIds.length > 0) {
@@ -1041,14 +1160,72 @@ export function CadCanvas({ state, dispatch }: Props) {
             {activeTool === "ellipse" && drawState.points.length === 1 && (
               <ellipse cx={drawState.points[0].x} cy={drawState.points[0].y} rx={Math.abs(previewPt.x - drawState.points[0].x)} ry={Math.abs(previewPt.y - drawState.points[0].y)} fill="var(--primary)" fillOpacity={0.05} stroke="var(--primary)" strokeWidth={0.06} strokeDasharray="0.12 0.08" />
             )}
-            {/* Dimension: step 1 — line from node 1 to cursor */}
-            {activeTool === "dimension" && drawState.points.length === 1 && (
+            {/* Dimension: radius preview — leader line from center to rim */}
+            {activeTool === "dimension" && dimMode?.type === "radius" && drawState.points.length === 1 && (() => {
+              const { center, radius, rimPt } = dimMode;
+              const dx = rimPt.x - center.x;
+              const dy = rimPt.y - center.y;
+              const len = Math.sqrt(dx * dx + dy * dy);
+              if (len < 0.001) return null;
+              const ux = dx / len;
+              const uy = dy / len;
+              const proj = (previewPt.x - center.x) * ux + (previewPt.y - center.y) * uy;
+              const ext = Math.max(proj - radius, 0.3);
+              const endX = center.x + ux * (radius + ext);
+              const endY = center.y + uy * (radius + ext);
+              const lx = (rimPt.x + endX) / 2;
+              const ly = (rimPt.y + endY) / 2;
+              return (
+                <>
+                  <line x1={center.x} y1={center.y} x2={endX} y2={endY} stroke="var(--svg-dim)" strokeWidth={0.03} strokeDasharray="0.1 0.06" />
+                  <text x={lx} y={ly - 0.15} fill="var(--svg-dim)" fontSize={0.3} textAnchor="middle" fontFamily="var(--font-mono)">R {radius.toFixed(2)}</text>
+                  <circle cx={center.x} cy={center.y} r={0.08} fill="var(--svg-dim)" fillOpacity={0.5} />
+                  <circle cx={rimPt.x} cy={rimPt.y} r={0.08} fill="var(--svg-dim)" fillOpacity={0.5} />
+                </>
+              );
+            })()}
+            {/* Dimension: arc preview — arc with angle + length */}
+            {activeTool === "dimension" && dimMode?.type === "arc" && drawState.points.length === 1 && (() => {
+              const { center, radius, startAngle, endAngle } = dimMode;
+              const distFromCenter = distance(previewPt, center);
+              const off = Math.max(distFromCenter - radius, 0.3);
+              const dimR = radius + off;
+              let sweep = endAngle - startAngle;
+              while (sweep < 0) sweep += 2 * Math.PI;
+              while (sweep > 2 * Math.PI) sweep -= 2 * Math.PI;
+              if (sweep === 0) sweep = 2 * Math.PI;
+              const angleDeg = (sweep * 180) / Math.PI;
+              const arcLen = radius * sweep;
+              const midAngle = startAngle + sweep / 2;
+              const sx = center.x + dimR * Math.cos(startAngle);
+              const sy = center.y + dimR * Math.sin(startAngle);
+              const ex = center.x + dimR * Math.cos(endAngle);
+              const ey = center.y + dimR * Math.sin(endAngle);
+              const largeArc = sweep > Math.PI ? 1 : 0;
+              const lx = center.x + (dimR + 0.3) * Math.cos(midAngle);
+              const ly = center.y + (dimR + 0.3) * Math.sin(midAngle);
+              // Extension lines from arc endpoints
+              const s0x = center.x + radius * Math.cos(startAngle);
+              const s0y = center.y + radius * Math.sin(startAngle);
+              const e0x = center.x + radius * Math.cos(endAngle);
+              const e0y = center.y + radius * Math.sin(endAngle);
+              return (
+                <>
+                  <line x1={s0x} y1={s0y} x2={sx} y2={sy} stroke="var(--svg-dim)" strokeWidth={0.02} strokeDasharray="0.08 0.04" />
+                  <line x1={e0x} y1={e0y} x2={ex} y2={ey} stroke="var(--svg-dim)" strokeWidth={0.02} strokeDasharray="0.08 0.04" />
+                  <path d={`M ${sx} ${sy} A ${dimR} ${dimR} 0 ${largeArc} 1 ${ex} ${ey}`} fill="none" stroke="var(--svg-dim)" strokeWidth={0.03} strokeDasharray="0.1 0.06" />
+                  <text x={lx} y={ly} fill="var(--svg-dim)" fontSize={0.28} textAnchor="middle" fontFamily="var(--font-mono)">{angleDeg.toFixed(1)}°  L {arcLen.toFixed(2)}</text>
+                </>
+              );
+            })()}
+            {/* Dimension: step 1 — line from node 1 to cursor (linear only) */}
+            {activeTool === "dimension" && !dimMode && drawState.points.length === 1 && (
               <>
                 <line x1={drawState.points[0].x} y1={drawState.points[0].y} x2={previewPt.x} y2={previewPt.y} stroke="var(--svg-dim)" strokeWidth={0.03} strokeDasharray="0.1 0.06" />
                 <text x={(drawState.points[0].x + previewPt.x) / 2} y={(drawState.points[0].y + previewPt.y) / 2 - 0.3} fill="var(--svg-dim)" fontSize={0.3} textAnchor="middle" fontFamily="var(--font-mono)">{distance(drawState.points[0], previewPt).toFixed(2)}</text>
               </>
             )}
-            {/* Dimension: step 2 — show dimension line preview with offset from cursor */}
+            {/* Dimension: step 2 — show dimension line preview with offset from cursor (linear) */}
             {activeTool === "dimension" && drawState.points.length === 2 && (() => {
               const p1 = drawState.points[0];
               const p2 = drawState.points[1];
@@ -1065,14 +1242,10 @@ export function CadCanvas({ state, dispatch }: Props) {
               const my = (ds.y + de.y) / 2;
               return (
                 <>
-                  {/* Extension lines */}
                   <line x1={p1.x} y1={p1.y} x2={ds.x} y2={ds.y} stroke="var(--svg-dim)" strokeWidth={0.02} strokeDasharray="0.08 0.04" />
                   <line x1={p2.x} y1={p2.y} x2={de.x} y2={de.y} stroke="var(--svg-dim)" strokeWidth={0.02} strokeDasharray="0.08 0.04" />
-                  {/* Dimension line */}
                   <line x1={ds.x} y1={ds.y} x2={de.x} y2={de.y} stroke="var(--svg-dim)" strokeWidth={0.03} />
-                  {/* Label */}
                   <text x={mx} y={my - 0.15} fill="var(--svg-dim)" fontSize={0.3} textAnchor="middle" fontFamily="var(--font-mono)">{len.toFixed(2)}</text>
-                  {/* Node markers */}
                   <circle cx={p1.x} cy={p1.y} r={0.1} fill="var(--primary)" fillOpacity={0.5} />
                   <circle cx={p2.x} cy={p2.y} r={0.1} fill="var(--primary)" fillOpacity={0.5} />
                 </>
@@ -1113,6 +1286,18 @@ export function CadCanvas({ state, dispatch }: Props) {
               return <><span className="text-border mx-1">|</span><span className="text-primary">{d.toFixed(2)}</span> <span className="text-muted">@ {ang.toFixed(1)}°</span> <span className="text-muted/40 ml-1">[Tab] or type</span></>;
             }
             if (activeTool === "dimension") {
+              if (dimMode?.type === "radius" && drawState.points.length === 1) {
+                return <><span className="text-border mx-1">|</span><span className="text-primary">R {dimMode.radius.toFixed(2)}</span> <span className="text-muted/40 ml-1">click to place label</span></>;
+              }
+              if (dimMode?.type === "arc" && drawState.points.length === 1) {
+                let sweep = dimMode.endAngle - dimMode.startAngle;
+                while (sweep < 0) sweep += 2 * Math.PI;
+                while (sweep > 2 * Math.PI) sweep -= 2 * Math.PI;
+                if (sweep === 0) sweep = 2 * Math.PI;
+                const deg = (sweep * 180 / Math.PI).toFixed(1);
+                const arcLen = (dimMode.radius * sweep).toFixed(2);
+                return <><span className="text-border mx-1">|</span><span className="text-primary">{deg}°</span> <span className="text-muted">L={arcLen}</span> <span className="text-muted/40 ml-1">click to place</span></>;
+              }
               if (drawState.points.length === 1) {
                 const d = distance(start, previewPt);
                 return <><span className="text-border mx-1">|</span><span className="text-primary">{d.toFixed(2)}</span> <span className="text-muted/40 ml-1">click node 2</span></>;
