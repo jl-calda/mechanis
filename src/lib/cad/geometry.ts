@@ -124,6 +124,111 @@ export function rectToPolygon(
   ];
 }
 
+/** Segment-segment intersection. Returns the intersection point or null if parallel/no intersection. */
+export function segmentIntersection(
+  a1: Point2D, a2: Point2D,
+  b1: Point2D, b2: Point2D
+): Point2D | null {
+  const dx1 = a2.x - a1.x, dy1 = a2.y - a1.y;
+  const dx2 = b2.x - b1.x, dy2 = b2.y - b1.y;
+  const denom = dx1 * dy2 - dy1 * dx2;
+  if (Math.abs(denom) < 1e-10) return null;
+  const t = ((b1.x - a1.x) * dy2 - (b1.y - a1.y) * dx2) / denom;
+  const u = ((b1.x - a1.x) * dy1 - (b1.y - a1.y) * dx1) / denom;
+  if (t < 1e-10 || t > 1 - 1e-10 || u < 1e-10 || u > 1 - 1e-10) return null;
+  return { x: a1.x + t * dx1, y: a1.y + t * dy1 };
+}
+
+/** Get all line segments from an entity */
+export function getEntitySegments(e: import("@/types/cad").CadEntity): [Point2D, Point2D][] {
+  switch (e.type) {
+    case "line":
+      return [[e.start, e.end]];
+    case "rectangle": {
+      const c = [
+        e.origin,
+        { x: e.origin.x + e.width, y: e.origin.y },
+        { x: e.origin.x + e.width, y: e.origin.y + e.height },
+        { x: e.origin.x, y: e.origin.y + e.height },
+      ];
+      return [[c[0], c[1]], [c[1], c[2]], [c[2], c[3]], [c[3], c[0]]];
+    }
+    case "polyline": {
+      const segs: [Point2D, Point2D][] = [];
+      for (let i = 0; i < e.points.length - 1; i++) segs.push([e.points[i], e.points[i + 1]]);
+      if (e.closed && e.points.length >= 3) segs.push([e.points[e.points.length - 1], e.points[0]]);
+      return segs;
+    }
+    default:
+      return [];
+  }
+}
+
+/**
+ * Trim a line entity at the nearest intersection with other entities.
+ * Given a click point on the line, finds intersection points on both sides,
+ * and trims to the nearest ones, removing the segment under the click.
+ * Returns replacement entities (0, 1, or 2 lines).
+ */
+export function trimLineAtPoint(
+  line: import("@/types/cad").LineEntity,
+  clickPt: Point2D,
+  allEntities: import("@/types/cad").CadEntity[]
+): import("@/types/cad").CadEntity[] {
+  const seg: [Point2D, Point2D] = [line.start, line.end];
+  const dx = seg[1].x - seg[0].x;
+  const dy = seg[1].y - seg[0].y;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 1e-10) return [];
+
+  // Project click onto line to get parameter t (0..1)
+  const clickT = ((clickPt.x - seg[0].x) * dx + (clickPt.y - seg[0].y) * dy) / (len * len);
+
+  // Find all intersections with other entities
+  const intersections: { t: number; pt: Point2D }[] = [];
+  for (const other of allEntities) {
+    if (other.id === line.id) continue;
+    for (const otherSeg of getEntitySegments(other)) {
+      const ip = segmentIntersection(seg[0], seg[1], otherSeg[0], otherSeg[1]);
+      if (ip) {
+        const t = ((ip.x - seg[0].x) * dx + (ip.y - seg[0].y) * dy) / (len * len);
+        if (t > 0.001 && t < 0.999) {
+          intersections.push({ t, pt: ip });
+        }
+      }
+    }
+  }
+
+  if (intersections.length === 0) {
+    // No intersections: delete the whole line
+    return [];
+  }
+
+  intersections.sort((a, b) => a.t - b.t);
+
+  // Find the intersection just before and just after the click
+  let before: { t: number; pt: Point2D } | null = null;
+  let after: { t: number; pt: Point2D } | null = null;
+  for (const ix of intersections) {
+    if (ix.t < clickT) before = ix;
+    if (ix.t > clickT && !after) after = ix;
+  }
+
+  const result: import("@/types/cad").CadEntity[] = [];
+  const base = { stroke: line.stroke, strokeWidth: line.strokeWidth, locked: line.locked, thickness: line.thickness };
+
+  // Keep segment from start to `before`
+  if (before) {
+    result.push({ ...base, id: generateId(), type: "line", start: line.start, end: before.pt });
+  }
+  // Keep segment from `after` to end
+  if (after) {
+    result.push({ ...base, id: generateId(), type: "line", start: after.pt, end: line.end });
+  }
+
+  return result;
+}
+
 /** Collect snap points (endpoints + midpoints) from an entity */
 export function getEntitySnapPoints(e: import("@/types/cad").CadEntity): Point2D[] {
   const pts: Point2D[] = [];

@@ -25,6 +25,8 @@ export type CadAction =
   | { type: "ADD_REGION"; region: ClosedRegion }
   | { type: "CLEAR_REGIONS" }
   | { type: "MOVE_ENTITIES"; ids: string[]; dx: number; dy: number }
+  | { type: "RESIZE_HANDLE"; id: string; handleIndex: number; newPos: Point2D }
+  | { type: "REPLACE_ENTITY"; id: string; newEntities: CadEntity[] }
   | { type: "ZOOM_TO_FIT"; canvasWidth: number; canvasHeight: number }
   | { type: "UNDO" }
   | { type: "REDO" };
@@ -137,6 +139,81 @@ export function cadReducer(state: CadState, action: CadAction): CadState {
 
     case "CLEAR_REGIONS":
       return { ...state, regions: [] };
+
+    case "RESIZE_HANDLE": {
+      const { id, handleIndex, newPos } = action;
+      const newEntities = state.entities.map((e) => {
+        if (e.id !== id) return e;
+        switch (e.type) {
+          case "line":
+            return handleIndex === 0
+              ? { ...e, start: newPos }
+              : { ...e, end: newPos };
+          case "rectangle": {
+            // Handles: 0=TL, 1=TR, 2=BR, 3=BL
+            const corners = [
+              e.origin,
+              { x: e.origin.x + e.width, y: e.origin.y },
+              { x: e.origin.x + e.width, y: e.origin.y + e.height },
+              { x: e.origin.x, y: e.origin.y + e.height },
+            ];
+            corners[handleIndex] = newPos;
+            // Derive opposing corner to compute new origin/width/height
+            const opp = corners[(handleIndex + 2) % 4];
+            const minX = Math.min(newPos.x, opp.x);
+            const minY = Math.min(newPos.y, opp.y);
+            const maxX = Math.max(newPos.x, opp.x);
+            const maxY = Math.max(newPos.y, opp.y);
+            return {
+              ...e,
+              origin: { x: minX, y: minY },
+              width: Math.max(0.01, maxX - minX),
+              height: Math.max(0.01, maxY - minY),
+            };
+          }
+          case "polyline":
+            if (handleIndex >= 0 && handleIndex < e.points.length) {
+              const pts = [...e.points];
+              pts[handleIndex] = newPos;
+              return { ...e, points: pts };
+            }
+            return e;
+          case "circle": {
+            if (handleIndex === 0) return { ...e, center: newPos };
+            // Handle 1 or 2 = radius handle
+            const r = Math.sqrt((newPos.x - e.center.x) ** 2 + (newPos.y - e.center.y) ** 2);
+            return { ...e, radius: Math.max(0.01, r) };
+          }
+          case "ellipse": {
+            if (handleIndex === 0) return { ...e, center: newPos };
+            if (handleIndex === 1) return { ...e, rx: Math.max(0.01, Math.abs(newPos.x - e.center.x)) };
+            return { ...e, ry: Math.max(0.01, Math.abs(newPos.y - e.center.y)) };
+          }
+          case "dimension":
+            return handleIndex === 0
+              ? { ...e, startPt: newPos }
+              : { ...e, endPt: newPos };
+          default:
+            return e;
+        }
+      });
+      return pushHistory(state, newEntities);
+    }
+
+    case "REPLACE_ENTITY": {
+      const newEntities: CadEntity[] = [];
+      for (const e of state.entities) {
+        if (e.id === action.id) {
+          newEntities.push(...action.newEntities);
+        } else {
+          newEntities.push(e);
+        }
+      }
+      return {
+        ...pushHistory(state, newEntities),
+        selectedIds: state.selectedIds.filter((sid) => sid !== action.id),
+      };
+    }
 
     case "MOVE_ENTITIES": {
       const idSet = new Set(action.ids);

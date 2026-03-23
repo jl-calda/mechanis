@@ -13,7 +13,7 @@ const STROKE_W = 0.06;
 const SEL_STROKE_W = 0.08;
 const HANDLE_R = 0.12;
 
-function Handle({ x, y }: { x: number; y: number }) {
+function Handle({ x, y, index, entityId }: { x: number; y: number; index: number; entityId: string }) {
   return (
     <rect
       x={x - HANDLE_R}
@@ -22,6 +22,9 @@ function Handle({ x, y }: { x: number; y: number }) {
       height={HANDLE_R * 2}
       fill={SEL_COLOR}
       stroke="none"
+      data-handle-index={index}
+      data-handle-entity={entityId}
+      style={{ cursor: "crosshair" }}
     />
   );
 }
@@ -69,8 +72,8 @@ export function CadEntityRenderer({ entity, selected }: Props) {
           />
           {selected && (
             <>
-              <Handle x={entity.start.x} y={entity.start.y} />
-              <Handle x={entity.end.x} y={entity.end.y} />
+              <Handle x={entity.start.x} y={entity.start.y} index={0} entityId={entity.id} />
+              <Handle x={entity.end.x} y={entity.end.y} index={1} entityId={entity.id} />
             </>
           )}
         </g>
@@ -91,10 +94,10 @@ export function CadEntityRenderer({ entity, selected }: Props) {
           />
           {selected && (
             <>
-              <Handle x={entity.origin.x} y={entity.origin.y} />
-              <Handle x={entity.origin.x + entity.width} y={entity.origin.y} />
-              <Handle x={entity.origin.x + entity.width} y={entity.origin.y + entity.height} />
-              <Handle x={entity.origin.x} y={entity.origin.y + entity.height} />
+              <Handle x={entity.origin.x} y={entity.origin.y} index={0} entityId={entity.id} />
+              <Handle x={entity.origin.x + entity.width} y={entity.origin.y} index={1} entityId={entity.id} />
+              <Handle x={entity.origin.x + entity.width} y={entity.origin.y + entity.height} index={2} entityId={entity.id} />
+              <Handle x={entity.origin.x} y={entity.origin.y + entity.height} index={3} entityId={entity.id} />
             </>
           )}
         </g>
@@ -117,7 +120,7 @@ export function CadEntityRenderer({ entity, selected }: Props) {
             opacity={entity.thickness > 0 ? 0.7 : 1}
           />
           {selected &&
-            entity.points.map((p, i) => <Handle key={i} x={p.x} y={p.y} />)}
+            entity.points.map((p, i) => <Handle key={i} x={p.x} y={p.y} index={i} entityId={entity.id} />)}
         </g>
       );
     }
@@ -136,9 +139,9 @@ export function CadEntityRenderer({ entity, selected }: Props) {
           />
           {selected && (
             <>
-              <Handle x={entity.center.x} y={entity.center.y} />
-              <Handle x={entity.center.x + entity.radius} y={entity.center.y} />
-              <Handle x={entity.center.x} y={entity.center.y - entity.radius} />
+              <Handle x={entity.center.x} y={entity.center.y} index={0} entityId={entity.id} />
+              <Handle x={entity.center.x + entity.radius} y={entity.center.y} index={1} entityId={entity.id} />
+              <Handle x={entity.center.x} y={entity.center.y - entity.radius} index={2} entityId={entity.id} />
             </>
           )}
         </g>
@@ -159,9 +162,9 @@ export function CadEntityRenderer({ entity, selected }: Props) {
           />
           {selected && (
             <>
-              <Handle x={entity.center.x} y={entity.center.y} />
-              <Handle x={entity.center.x + entity.rx} y={entity.center.y} />
-              <Handle x={entity.center.x} y={entity.center.y - entity.ry} />
+              <Handle x={entity.center.x} y={entity.center.y} index={0} entityId={entity.id} />
+              <Handle x={entity.center.x + entity.rx} y={entity.center.y} index={1} entityId={entity.id} />
+              <Handle x={entity.center.x} y={entity.center.y - entity.ry} index={2} entityId={entity.id} />
             </>
           )}
         </g>
@@ -269,8 +272,8 @@ export function CadEntityRenderer({ entity, selected }: Props) {
 
           {selected && (
             <>
-              <Handle x={startPt.x} y={startPt.y} />
-              <Handle x={endPt.x} y={endPt.y} />
+              <Handle x={startPt.x} y={startPt.y} index={0} entityId={entity.id} />
+              <Handle x={endPt.x} y={endPt.y} index={1} entityId={entity.id} />
             </>
           )}
         </g>

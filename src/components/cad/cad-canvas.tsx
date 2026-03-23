@@ -3,7 +3,7 @@
 import { useRef, useCallback, useState, useMemo, useEffect } from "react";
 import type { CadState, Point2D, CadEntity } from "@/types/cad";
 import type { CadAction } from "@/lib/cad-reducer";
-import { snapToGrid, generateId, distance, midpoint, pointNearSegment, pointNearCircle, pointNearEllipse, getEntitySnapPoints, getEntityBounds } from "@/lib/cad/geometry";
+import { snapToGrid, generateId, distance, midpoint, pointNearSegment, pointNearCircle, pointNearEllipse, getEntitySnapPoints, getEntityBounds, trimLineAtPoint } from "@/lib/cad/geometry";
 import { manualPickRegion } from "@/lib/cad/region-detect";
 import { CadGrid } from "./cad-grid";
 import { CadEntityRenderer } from "./cad-entity-renderer";
@@ -47,6 +47,24 @@ function entityInRect(
   return !(b.maxX < rx || b.minX > rx + rw || b.maxY < ry || b.minY > ry + rh);
 }
 
+/** Get handle positions for a selected entity */
+function getHandlePositions(e: CadEntity): Point2D[] {
+  switch (e.type) {
+    case "line": return [e.start, e.end];
+    case "rectangle": return [
+      e.origin,
+      { x: e.origin.x + e.width, y: e.origin.y },
+      { x: e.origin.x + e.width, y: e.origin.y + e.height },
+      { x: e.origin.x, y: e.origin.y + e.height },
+    ];
+    case "polyline": return e.points;
+    case "circle": return [e.center, { x: e.center.x + e.radius, y: e.center.y }, { x: e.center.x, y: e.center.y - e.radius }];
+    case "ellipse": return [e.center, { x: e.center.x + e.rx, y: e.center.y }, { x: e.center.x, y: e.center.y - e.ry }];
+    case "dimension": return [e.startPt, e.endPt];
+    default: return [];
+  }
+}
+
 export function CadCanvas({ state, dispatch }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [cursorPos, setCursorPos] = useState<Point2D>({ x: 0, y: 0 });
@@ -62,6 +80,11 @@ export function CadCanvas({ state, dispatch }: Props) {
   const dragStart = useRef<Point2D>({ x: 0, y: 0 });
   const dragEntityIds = useRef<string[]>([]);
   const dragCommitted = useRef(false);
+
+  // Resize handle drag state
+  const isResizing = useRef(false);
+  const resizeEntityId = useRef<string>("");
+  const resizeHandleIndex = useRef<number>(-1);
 
   // Rectangle selection state
   const [selRect, setSelRect] = useState<{ start: Point2D; current: Point2D } | null>(null);
@@ -215,8 +238,39 @@ export function CadCanvas({ state, dispatch }: Props) {
         return;
       }
 
+      // Trim mode
+      if (activeTool === "trim") {
+        const hitId = hitTest(world);
+        if (hitId) {
+          const entity = entities.find((ent) => ent.id === hitId);
+          if (entity?.type === "line") {
+            const newEntities = trimLineAtPoint(entity, world, entities);
+            dispatch({ type: "REPLACE_ENTITY", id: hitId, newEntities });
+          }
+        }
+        return;
+      }
+
       // Select mode
       if (activeTool === "select") {
+        // Check if clicking on a resize handle of an already-selected entity
+        const handleTol = 0.2;
+        for (const selId of selectedIds) {
+          const selEntity = entities.find((ent) => ent.id === selId);
+          if (!selEntity) continue;
+          const handles = getHandlePositions(selEntity);
+          for (let hi = 0; hi < handles.length; hi++) {
+            if (distance(world, handles[hi]) < handleTol) {
+              // Start resize drag
+              isResizing.current = true;
+              resizeEntityId.current = selId;
+              resizeHandleIndex.current = hi;
+              (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+              return;
+            }
+          }
+        }
+
         const hitId = hitTest(world);
         if (hitId) {
           if (!selectedIds.includes(hitId)) {
@@ -317,6 +371,17 @@ export function CadCanvas({ state, dispatch }: Props) {
       const nearest = findNearestSnap(world, entities, snapRadius);
       setSnapPt(nearest && distance(world, nearest) < snapRadius ? nearest : null);
 
+      // Resize handle drag
+      if (isResizing.current) {
+        dispatch({
+          type: "RESIZE_HANDLE",
+          id: resizeEntityId.current,
+          handleIndex: resizeHandleIndex.current,
+          newPos: snapped,
+        });
+        return;
+      }
+
       // Rectangle selection
       if (isSelecting.current) {
         setSelRect({ start: selStartWorld.current, current: world });
@@ -363,6 +428,7 @@ export function CadCanvas({ state, dispatch }: Props) {
     }
     isPanning.current = false;
     isDragging.current = false;
+    isResizing.current = false;
   }, [selRect, entities, dispatch]);
 
   const handleWheel = useCallback(
@@ -597,9 +663,11 @@ export function CadCanvas({ state, dispatch }: Props) {
             ? "Click to select · Drag to move · Drag empty space for box select · F to zoom fit"
             : activeTool === "dimension"
               ? drawState ? "Click second point to place dimension" : "Click first point for dimension"
-              : activeTool === "region-pick"
-                ? "Click inside a closed shape to detect region"
-                : drawState ? "Click to set second point · Esc to cancel" : "Click to start drawing · Esc to cancel · F to zoom fit"}
+              : activeTool === "trim"
+                ? "Click a line to trim at intersections"
+                : activeTool === "region-pick"
+                  ? "Click inside a closed shape to detect region"
+                  : drawState ? "Click to set second point · Esc to cancel" : "Click to start drawing · Esc to cancel · F to zoom fit"}
       </div>
 
       {/* Editable dimension input overlay */}

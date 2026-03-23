@@ -19,6 +19,7 @@ import {
   Sparkles,
   Trash2,
   Maximize2,
+  Scissors,
 } from "lucide-react";
 
 interface Props {
@@ -48,6 +49,7 @@ const tools: { tool: ToolType; icon: typeof MousePointer2; label: string }[] = [
   { tool: "circle", icon: Circle, label: "Circle" },
   { tool: "ellipse", icon: Ellipsis, label: "Ellipse" },
   { tool: "dimension", icon: Ruler, label: "Dimension" },
+  { tool: "trim", icon: Scissors, label: "Trim" },
   { tool: "region-pick", icon: ScanSearch, label: "Pick Region" },
 ];
 

@@ -7,6 +7,7 @@ export type ToolType =
   | "circle"
   | "ellipse"
   | "dimension"
+  | "trim"
   | "pan"
   | "region-pick";
 
