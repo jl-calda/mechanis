@@ -107,7 +107,7 @@ export function ProjectActions({ type, getData, onLoad }: Props) {
                   >
                     <div className="font-medium">{p.name}</div>
                     <div className="text-[10px] text-muted">
-                      {new Date(p.updated_at).toLocaleDateString()}
+                      {new Date(p.updatedAt).toLocaleDateString()}
                     </div>
                   </button>
                 ))}
