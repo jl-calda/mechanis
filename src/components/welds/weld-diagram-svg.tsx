@@ -26,8 +26,8 @@ export function WeldDiagramSvg({ input, result }: WeldDiagramSvgProps) {
         y={baseY}
         width={plateW}
         height={plateH * 0.4}
-        fill="#e2e8f0"
-        stroke="#334155"
+        fill="#2a2a2a"
+        stroke="#555"
         strokeWidth={1.5}
       />
 
@@ -37,8 +37,8 @@ export function WeldDiagramSvg({ input, result }: WeldDiagramSvgProps) {
         y={baseY - plateH * 1.2}
         width={16}
         height={plateH * 1.2}
-        fill="#e2e8f0"
-        stroke="#334155"
+        fill="#2a2a2a"
+        stroke="#555"
         strokeWidth={1.5}
       />
 
@@ -46,9 +46,9 @@ export function WeldDiagramSvg({ input, result }: WeldDiagramSvgProps) {
       {input.numberOfWelds >= 1 && (
         <polygon
           points={`${baseX - 8},${baseY} ${baseX - 8 - weldSize},${baseY} ${baseX - 8},${baseY - weldSize}`}
-          fill={result.sizeCheck ? "#16a34a" : "#dc2626"}
-          fillOpacity={0.3}
-          stroke={result.sizeCheck ? "#16a34a" : "#dc2626"}
+          fill={result.sizeCheck ? "#3ECF8E" : "#f43f5e"}
+          fillOpacity={0.25}
+          stroke={result.sizeCheck ? "#3ECF8E" : "#f43f5e"}
           strokeWidth={1.5}
         />
       )}
@@ -57,9 +57,9 @@ export function WeldDiagramSvg({ input, result }: WeldDiagramSvgProps) {
       {input.numberOfWelds >= 2 && (
         <polygon
           points={`${baseX + 8},${baseY} ${baseX + 8 + weldSize},${baseY} ${baseX + 8},${baseY - weldSize}`}
-          fill={result.sizeCheck ? "#16a34a" : "#dc2626"}
-          fillOpacity={0.3}
-          stroke={result.sizeCheck ? "#16a34a" : "#dc2626"}
+          fill={result.sizeCheck ? "#3ECF8E" : "#f43f5e"}
+          fillOpacity={0.25}
+          stroke={result.sizeCheck ? "#3ECF8E" : "#f43f5e"}
           strokeWidth={1.5}
         />
       )}
@@ -68,7 +68,7 @@ export function WeldDiagramSvg({ input, result }: WeldDiagramSvgProps) {
       <text
         x={baseX - 8 - weldSize - 5}
         y={baseY - weldSize / 2}
-        fill="#475569"
+        fill="#888"
         fontSize={9}
         fontFamily="monospace"
         textAnchor="end"
@@ -84,14 +84,14 @@ export function WeldDiagramSvg({ input, result }: WeldDiagramSvgProps) {
             y1={baseY - plateH * 1.2 - 10}
             x2={baseX}
             y2={baseY - plateH * 1.2 - 35}
-            stroke="#e67e22"
+            stroke="#f59e0b"
             strokeWidth={1.5}
-            markerEnd="url(#arrowOrange)"
+            markerEnd="url(#arrowAmber)"
           />
           <text
             x={baseX + 10}
             y={baseY - plateH * 1.2 - 20}
-            fill="#e67e22"
+            fill="#f59e0b"
             fontSize={9}
             fontFamily="monospace"
           >
@@ -103,7 +103,7 @@ export function WeldDiagramSvg({ input, result }: WeldDiagramSvgProps) {
       {/* Arrow marker */}
       <defs>
         <marker
-          id="arrowOrange"
+          id="arrowAmber"
           viewBox="0 0 10 10"
           refX={5}
           refY={5}
@@ -111,7 +111,7 @@ export function WeldDiagramSvg({ input, result }: WeldDiagramSvgProps) {
           markerHeight={6}
           orient="auto-start-reverse"
         >
-          <path d="M 0 0 L 10 5 L 0 10 z" fill="#e67e22" />
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#f59e0b" />
         </marker>
       </defs>
 
@@ -119,7 +119,7 @@ export function WeldDiagramSvg({ input, result }: WeldDiagramSvgProps) {
       <text
         x={w / 2}
         y={h - 15}
-        fill="#475569"
+        fill="#888"
         fontSize={9}
         fontFamily="monospace"
         textAnchor="middle"

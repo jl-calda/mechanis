@@ -29,7 +29,7 @@ function DimensionLine({
   const my = (y1 + y2) / 2 + oy;
 
   return (
-    <g className="text-muted" stroke="#64748b" strokeWidth={0.8} fill="none">
+    <g stroke="#555" strokeWidth={0.8} fill="none">
       {/* Extension lines */}
       <line
         x1={x1}
@@ -72,7 +72,7 @@ function DimensionLine({
         y={my + (isH ? -4 : 0)}
         textAnchor="middle"
         dominantBaseline={isH ? "auto" : "middle"}
-        fill="#475569"
+        fill="#888"
         fontSize={9}
         fontFamily="var(--font-mono), monospace"
         dx={isH ? 0 : 12}
@@ -109,7 +109,7 @@ function WShapeSvg({ profile, width = 300, height = 350 }: ProfileSvgProps) {
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full">
       {/* Cross-section */}
-      <g fill="#e2e8f0" stroke="#334155" strokeWidth={1.5}>
+      <g fill="#2a2a2a" stroke="#555" strokeWidth={1.5}>
         {/* Top flange */}
         <rect x={left} y={top} width={sbf} height={stf} />
         {/* Web */}
@@ -119,8 +119,8 @@ function WShapeSvg({ profile, width = 300, height = 350 }: ProfileSvgProps) {
       </g>
 
       {/* Center axes */}
-      <line x1={cx} y1={top - 15} x2={cx} y2={bot + 15} stroke="#94a3b8" strokeWidth={0.5} strokeDasharray="4,3" />
-      <line x1={left - 15} y1={cy} x2={right + 15} y2={cy} stroke="#94a3b8" strokeWidth={0.5} strokeDasharray="4,3" />
+      <line x1={cx} y1={top - 15} x2={cx} y2={bot + 15} stroke="#333" strokeWidth={0.5} strokeDasharray="4,3" />
+      <line x1={left - 15} y1={cy} x2={right + 15} y2={cy} stroke="#333" strokeWidth={0.5} strokeDasharray="4,3" />
 
       {/* Dimension: d (depth) */}
       <DimensionLine x1={right + 20} y1={top} x2={right + 20} y2={bot} label={`d=${d}"`} orientation="vertical" />
@@ -153,7 +153,7 @@ function CShapeSvg({ profile, width = 300, height = 350 }: ProfileSvgProps) {
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full">
-      <g fill="#e2e8f0" stroke="#334155" strokeWidth={1.5}>
+      <g fill="#2a2a2a" stroke="#555" strokeWidth={1.5}>
         {/* Top flange */}
         <rect x={left} y={top} width={sbf} height={stf} />
         {/* Web */}
@@ -194,7 +194,7 @@ function LShapeSvg({ profile, width = 300, height = 350 }: ProfileSvgProps) {
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full">
-      <path d={path} fill="#e2e8f0" stroke="#334155" strokeWidth={1.5} />
+      <path d={path} fill="#2a2a2a" stroke="#555" strokeWidth={1.5} />
       <DimensionLine x1={originX - 20} y1={originY} x2={originX - 20} y2={originY - sd} label={`d=${d}"`} orientation="vertical" />
       <DimensionLine x1={originX} y1={originY + 20} x2={originX + sbf} y2={originY + 20} label={`bf=${bf}"`} orientation="horizontal" />
       <DimensionLine x1={originX + st + 5} y1={originY - sd} x2={originX + st + 5} y2={originY - sd + st} label={`t=${t}"`} orientation="vertical" offset={15} />
@@ -221,8 +221,8 @@ function HSSShapeSvg({ profile, width = 300, height = 350 }: ProfileSvgProps) {
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full">
-      <rect x={outerX} y={outerY} width={sb} height={sd} rx={r} fill="#e2e8f0" stroke="#334155" strokeWidth={1.5} />
-      <rect x={innerX} y={innerY} width={sb - 2 * st} height={sd - 2 * st} rx={Math.max(r - st, 0)} fill="white" stroke="#334155" strokeWidth={0.8} />
+      <rect x={outerX} y={outerY} width={sb} height={sd} rx={r} fill="#2a2a2a" stroke="#555" strokeWidth={1.5} />
+      <rect x={innerX} y={innerY} width={sb - 2 * st} height={sd - 2 * st} rx={Math.max(r - st, 0)} fill="#171717" stroke="#555" strokeWidth={0.8} />
 
       <DimensionLine x1={outerX + sb + 20} y1={outerY} x2={outerX + sb + 20} y2={outerY + sd} label={`d=${d}"`} orientation="vertical" />
       <DimensionLine x1={outerX} y1={outerY + sd + 20} x2={outerX + sb} y2={outerY + sd + 20} label={`b=${b}"`} orientation="horizontal" />

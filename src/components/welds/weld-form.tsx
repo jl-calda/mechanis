@@ -8,9 +8,9 @@ interface WeldFormProps {
 }
 
 const selectClass =
-  "w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary";
+  "w-full rounded-md border border-border bg-surface-alt px-2.5 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary";
 const inputClass =
-  "w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm font-mono focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary";
+  "w-full rounded-md border border-border bg-surface-alt px-2.5 py-1.5 text-xs font-mono text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary";
 
 function Field({
   label,
@@ -23,9 +23,9 @@ function Field({
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-foreground mb-1">
+      <label className="block text-xs font-medium text-muted mb-1">
         {label}
-        {unit && <span className="ml-1 text-xs text-muted">({unit})</span>}
+        {unit && <span className="ml-1 text-[10px] text-muted/60">({unit})</span>}
       </label>
       {children}
     </div>
@@ -38,10 +38,10 @@ export function WeldForm({ input, onChange }: WeldFormProps) {
   }
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-sm font-semibold text-foreground">Weld Parameters</h2>
+    <div className="space-y-3">
+      <h2 className="text-xs font-medium text-muted uppercase tracking-wider">Weld Parameters</h2>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-2">
         <Field label="Weld Type">
           <select
             className={selectClass}
@@ -71,7 +71,7 @@ export function WeldForm({ input, onChange }: WeldFormProps) {
         </Field>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-2">
         <Field label="Weld Size (leg)" unit="in">
           <input
             type="number"
@@ -95,7 +95,7 @@ export function WeldForm({ input, onChange }: WeldFormProps) {
         </Field>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-2">
         <Field label="Number of Welds">
           <select
             className={selectClass}
@@ -120,11 +120,11 @@ export function WeldForm({ input, onChange }: WeldFormProps) {
         </Field>
       </div>
 
-      <h2 className="text-sm font-semibold text-foreground pt-2">
+      <h2 className="text-xs font-medium text-muted uppercase tracking-wider pt-1">
         Base Metal 1
       </h2>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-2">
         <Field label="Fu" unit="ksi">
           <input
             type="number"
@@ -147,11 +147,11 @@ export function WeldForm({ input, onChange }: WeldFormProps) {
         </Field>
       </div>
 
-      <h2 className="text-sm font-semibold text-foreground pt-2">
+      <h2 className="text-xs font-medium text-muted uppercase tracking-wider pt-1">
         Base Metal 2
       </h2>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-2">
         <Field label="Fu" unit="ksi">
           <input
             type="number"

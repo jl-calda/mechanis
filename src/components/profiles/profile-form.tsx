@@ -30,9 +30,9 @@ export function ProfileForm({
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div>
-        <label className="block text-sm font-medium text-foreground mb-1.5">
+        <label className="block text-xs font-medium text-muted mb-1.5">
           Profile Type
         </label>
         <select
@@ -43,7 +43,7 @@ export function ProfileForm({
             const first = getProfilesByType(newType)[0];
             if (first) onDesignationChange(first.designation);
           }}
-          className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+          className="w-full rounded-md border border-border bg-surface-alt px-2.5 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
         >
           {profileTypes.map((t) => (
             <option key={t.value} value={t.value}>
@@ -54,13 +54,13 @@ export function ProfileForm({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-foreground mb-1.5">
+        <label className="block text-xs font-medium text-muted mb-1.5">
           Designation
         </label>
         <select
           value={selectedDesignation}
           onChange={(e) => onDesignationChange(e.target.value)}
-          className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm font-mono focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+          className="w-full rounded-md border border-border bg-surface-alt px-2.5 py-1.5 text-xs font-mono text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
         >
           {filteredProfiles.map((p) => (
             <option key={p.designation} value={p.designation}>

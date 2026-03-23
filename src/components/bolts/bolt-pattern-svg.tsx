@@ -32,7 +32,7 @@ export function BoltPatternSvg({ input, result }: BoltPatternSvgProps) {
 
   const edgeOk = result.edgeDistanceCheck.passes;
   const spacingOk = result.spacingCheck.passes;
-  const boltColor = edgeOk && spacingOk ? "#16a34a" : "#dc2626";
+  const boltColor = edgeOk && spacingOk ? "#3ECF8E" : "#f43f5e";
 
   return (
     <svg
@@ -45,8 +45,8 @@ export function BoltPatternSvg({ input, result }: BoltPatternSvgProps) {
         y={pad}
         width={plateW * scale}
         height={plateH * scale}
-        fill="#f1f5f9"
-        stroke="#334155"
+        fill="#222"
+        stroke="#555"
         strokeWidth={1.5}
         rx={2}
       />
@@ -59,7 +59,7 @@ export function BoltPatternSvg({ input, result }: BoltPatternSvgProps) {
             cy={b.cy}
             r={boltR}
             fill={boltColor}
-            fillOpacity={0.2}
+            fillOpacity={0.15}
             stroke={boltColor}
             strokeWidth={1.5}
           />
@@ -90,13 +90,13 @@ export function BoltPatternSvg({ input, result }: BoltPatternSvgProps) {
             y1={bolts[0].cy}
             x2={pad + plateW * scale + 15}
             y2={bolts[numCols].cy}
-            stroke="#64748b"
+            stroke="#555"
             strokeWidth={0.8}
           />
           <text
             x={pad + plateW * scale + 20}
             y={(bolts[0].cy + bolts[numCols].cy) / 2}
-            fill="#475569"
+            fill="#888"
             fontSize={9}
             fontFamily="monospace"
             dominantBaseline="middle"
@@ -114,13 +114,13 @@ export function BoltPatternSvg({ input, result }: BoltPatternSvgProps) {
             y1={pad - 10}
             x2={bolts[1].cx}
             y2={pad - 10}
-            stroke="#64748b"
+            stroke="#555"
             strokeWidth={0.8}
           />
           <text
             x={(bolts[0].cx + bolts[1].cx) / 2}
             y={pad - 14}
-            fill="#475569"
+            fill="#888"
             fontSize={9}
             fontFamily="monospace"
             textAnchor="middle"
@@ -134,7 +134,7 @@ export function BoltPatternSvg({ input, result }: BoltPatternSvgProps) {
       <text
         x={pad + 4}
         y={pad + edgeDistVert * scale / 2}
-        fill="#475569"
+        fill="#888"
         fontSize={8}
         fontFamily="monospace"
       >

@@ -8,7 +8,7 @@ const tools = [
     description:
       "View steel cross-sections with annotated dimensions. Browse W-shapes, channels, angles, and HSS profiles.",
     icon: Ruler,
-    color: "bg-blue-500",
+    color: "bg-emerald-500/10 text-emerald-400",
   },
   {
     href: "/bolts",
@@ -16,7 +16,7 @@ const tools = [
     description:
       "Calculate bolt group capacity per AISC 360 Chapter J. Shear, bearing, and tearout checks with visual bolt patterns.",
     icon: CircleDot,
-    color: "bg-emerald-500",
+    color: "bg-sky-500/10 text-sky-400",
   },
   {
     href: "/welds",
@@ -24,7 +24,7 @@ const tools = [
     description:
       "Determine fillet and groove weld capacities. Includes directional strength increase and base metal checks.",
     icon: Zap,
-    color: "bg-orange-500",
+    color: "bg-amber-500/10 text-amber-400",
   },
   {
     href: "/materials",
@@ -32,7 +32,7 @@ const tools = [
     description:
       "Searchable database of structural steel grades. A36, A992, A572, A500, and more with full mechanical properties.",
     icon: Database,
-    color: "bg-violet-500",
+    color: "bg-violet-500/10 text-violet-400",
   },
 ];
 
@@ -40,32 +40,32 @@ export default function Home() {
   return (
     <div className="pt-8 md:pt-4">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">
+        <h1 className="text-xl font-medium tracking-tight text-foreground">
           Mechanis
         </h1>
-        <p className="mt-2 text-muted">
+        <p className="mt-1 text-xs text-muted">
           Structural engineering tools for steel design per AISC 360.
         </p>
       </div>
 
-      <div className="grid gap-6 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2">
         {tools.map((tool) => {
           const Icon = tool.icon;
           return (
             <Link
               key={tool.href}
               href={tool.href}
-              className="group flex flex-col rounded-xl border border-border bg-surface p-6 shadow-sm transition-all hover:shadow-md hover:border-primary/30"
+              className="group flex flex-col rounded-lg border border-border bg-surface p-5 transition-all hover:border-[#333] hover:bg-surface-alt"
             >
               <div
-                className={`mb-4 flex h-10 w-10 items-center justify-center rounded-lg ${tool.color} text-white`}
+                className={`mb-3 flex h-8 w-8 items-center justify-center rounded-md ${tool.color}`}
               >
-                <Icon size={20} />
+                <Icon size={16} />
               </div>
-              <h2 className="text-lg font-semibold text-foreground group-hover:text-primary">
+              <h2 className="text-sm font-medium text-foreground group-hover:text-primary">
                 {tool.title}
               </h2>
-              <p className="mt-2 text-sm leading-relaxed text-muted">
+              <p className="mt-1.5 text-xs leading-relaxed text-muted">
                 {tool.description}
               </p>
             </Link>
@@ -73,7 +73,7 @@ export default function Home() {
         })}
       </div>
 
-      <p className="mt-12 text-xs text-muted">
+      <p className="mt-10 text-[11px] text-muted/60">
         Calculations reference AISC 360-22. Results should be verified by a
         licensed professional engineer.
       </p>

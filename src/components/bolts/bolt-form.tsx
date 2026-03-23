@@ -19,9 +19,9 @@ function Field({
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-foreground mb-1">
+      <label className="block text-xs font-medium text-muted mb-1">
         {label}
-        {unit && <span className="ml-1 text-xs text-muted">({unit})</span>}
+        {unit && <span className="ml-1 text-[10px] text-muted/60">({unit})</span>}
       </label>
       {children}
     </div>
@@ -29,9 +29,9 @@ function Field({
 }
 
 const selectClass =
-  "w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary";
+  "w-full rounded-md border border-border bg-surface-alt px-2.5 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary";
 const inputClass =
-  "w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm font-mono focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary";
+  "w-full rounded-md border border-border bg-surface-alt px-2.5 py-1.5 text-xs font-mono text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary";
 
 export function BoltForm({ input, onChange }: BoltFormProps) {
   function set<K extends keyof BoltInput>(key: K, value: BoltInput[K]) {
@@ -39,10 +39,10 @@ export function BoltForm({ input, onChange }: BoltFormProps) {
   }
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-sm font-semibold text-foreground">Bolt Parameters</h2>
+    <div className="space-y-3">
+      <h2 className="text-xs font-medium text-muted uppercase tracking-wider">Bolt Parameters</h2>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-2">
         <Field label="Bolt Grade">
           <select
             className={selectClass}
@@ -69,7 +69,7 @@ export function BoltForm({ input, onChange }: BoltFormProps) {
         </Field>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-2">
         <Field label="Connection Type">
           <select
             className={selectClass}
@@ -100,7 +100,7 @@ export function BoltForm({ input, onChange }: BoltFormProps) {
         </Field>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-2">
         <Field label="Hole Type">
           <select
             className={selectClass}
@@ -128,11 +128,11 @@ export function BoltForm({ input, onChange }: BoltFormProps) {
         </Field>
       </div>
 
-      <h2 className="text-sm font-semibold text-foreground pt-2">
+      <h2 className="text-xs font-medium text-muted uppercase tracking-wider pt-1">
         Bolt Layout
       </h2>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-2">
         <Field label="Rows">
           <input
             type="number"
@@ -155,7 +155,7 @@ export function BoltForm({ input, onChange }: BoltFormProps) {
         </Field>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-2">
         <Field label="Pitch (s)" unit="in">
           <input
             type="number"
@@ -178,7 +178,7 @@ export function BoltForm({ input, onChange }: BoltFormProps) {
         </Field>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-2">
         <Field label="Edge Dist. (vert)" unit="in">
           <input
             type="number"
@@ -201,11 +201,11 @@ export function BoltForm({ input, onChange }: BoltFormProps) {
         </Field>
       </div>
 
-      <h2 className="text-sm font-semibold text-foreground pt-2">
+      <h2 className="text-xs font-medium text-muted uppercase tracking-wider pt-1">
         Connected Material
       </h2>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-2">
         <Field label="Plate Thickness" unit="in">
           <input
             type="number"

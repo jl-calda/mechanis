@@ -26,24 +26,24 @@ export default function WeldsPage() {
 
   return (
     <div className="pt-8 md:pt-4">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
+      <div className="mb-5">
+        <h1 className="text-lg font-medium tracking-tight text-foreground">
           Weld Layout Calculator
         </h1>
-        <p className="mt-1 text-sm text-muted">
+        <p className="mt-0.5 text-xs text-muted">
           Calculate weld capacity per AISC 360 Chapter J2 with directional
           strength increase.
         </p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[320px_1fr_320px]">
+      <div className="grid gap-4 lg:grid-cols-[300px_1fr_300px]">
         {/* Input Form */}
-        <div className="rounded-xl border border-border bg-surface p-4 overflow-y-auto max-h-[calc(100vh-8rem)]">
+        <div className="rounded-lg border border-border bg-surface p-4 overflow-y-auto max-h-[calc(100vh-8rem)]">
           <WeldForm input={input} onChange={setInput} />
         </div>
 
         {/* Weld Diagram */}
-        <div className="flex items-center justify-center rounded-xl border border-border bg-surface p-6">
+        <div className="flex items-center justify-center rounded-lg border border-border bg-surface p-6">
           <WeldDiagramSvg input={input} result={result} />
         </div>
 

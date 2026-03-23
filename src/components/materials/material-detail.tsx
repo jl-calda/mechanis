@@ -29,9 +29,9 @@ export function MaterialDetail({ material }: MaterialDetailProps) {
   ];
 
   return (
-    <div className="rounded-xl border border-border bg-surface overflow-hidden">
-      <div className="border-b border-border bg-primary px-4 py-3">
-        <h3 className="text-sm font-semibold text-white">
+    <div className="rounded-lg border border-border bg-surface overflow-hidden">
+      <div className="border-b border-border bg-primary px-4 py-2.5">
+        <h3 className="text-xs font-medium text-black">
           {material.displayName}
         </h3>
       </div>
@@ -39,23 +39,23 @@ export function MaterialDetail({ material }: MaterialDetailProps) {
         {rows.map((row) => (
           <div
             key={row.label}
-            className="flex items-center justify-between px-4 py-2.5 text-sm"
+            className="flex items-center justify-between px-4 py-2 text-xs"
           >
             <span className="text-muted">{row.label}</span>
             <span className="font-mono text-foreground">{row.value}</span>
           </div>
         ))}
       </div>
-      <div className="border-t border-border px-4 py-3">
+      <div className="border-t border-border px-4 py-2.5">
         <div className="mb-2">
-          <span className="text-xs font-medium text-muted">
+          <span className="text-[10px] font-medium text-muted uppercase tracking-wider">
             Applicable Shapes
           </span>
           <div className="mt-1 flex flex-wrap gap-1">
             {material.applicableShapes.map((s) => (
               <span
                 key={s}
-                className="inline-flex rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary"
+                className="inline-flex rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
               >
                 {s}
               </span>
@@ -63,7 +63,7 @@ export function MaterialDetail({ material }: MaterialDetailProps) {
           </div>
         </div>
         {material.notes && (
-          <p className="mt-2 text-xs leading-relaxed text-muted">
+          <p className="mt-2 text-[11px] leading-relaxed text-muted">
             {material.notes}
           </p>
         )}

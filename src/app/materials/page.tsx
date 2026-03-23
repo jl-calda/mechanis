@@ -8,11 +8,11 @@ export const metadata = {
 export default function MaterialsPage() {
   return (
     <div className="pt-8 md:pt-4">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
+      <div className="mb-5">
+        <h1 className="text-lg font-medium tracking-tight text-foreground">
           Material Grade Database
         </h1>
-        <p className="mt-1 text-sm text-muted">
+        <p className="mt-0.5 text-xs text-muted">
           Searchable database of structural steel grades with mechanical
           properties per ASTM specifications.
         </p>

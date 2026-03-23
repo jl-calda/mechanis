@@ -9,8 +9,8 @@ interface WeldResultsProps {
 function StatusBadge({ passes }: { passes: boolean }) {
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-        passes ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+      className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${
+        passes ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
       }`}
     >
       {passes ? "OK" : "FAIL"}
@@ -28,11 +28,11 @@ function Row({
   highlight?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between px-4 py-2 text-sm">
+    <div className="flex items-center justify-between px-4 py-1.5 text-xs">
       <span className="text-muted">{label}</span>
       <span
         className={`font-mono ${
-          highlight ? "font-semibold text-primary" : "text-foreground"
+          highlight ? "font-medium text-primary" : "text-foreground"
         }`}
       >
         {value}
@@ -43,10 +43,10 @@ function Row({
 
 export function WeldResults({ result }: WeldResultsProps) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="rounded-lg border border-border bg-surface overflow-hidden">
-        <div className="border-b border-border bg-surface-alt px-4 py-2.5">
-          <h3 className="text-sm font-semibold text-foreground">
+        <div className="border-b border-border bg-surface-alt px-4 py-2">
+          <h3 className="text-xs font-medium text-muted uppercase tracking-wider">
             Capacity Results
           </h3>
         </div>
@@ -77,20 +77,20 @@ export function WeldResults({ result }: WeldResultsProps) {
       </div>
 
       <div className="rounded-lg border border-border bg-surface overflow-hidden">
-        <div className="border-b border-border bg-surface-alt px-4 py-2.5">
-          <h3 className="text-sm font-semibold text-foreground">
+        <div className="border-b border-border bg-surface-alt px-4 py-2">
+          <h3 className="text-xs font-medium text-muted uppercase tracking-wider">
             Detailing Checks
           </h3>
         </div>
         <div className="divide-y divide-border">
-          <div className="flex items-center justify-between px-4 py-2.5 text-sm">
+          <div className="flex items-center justify-between px-4 py-2 text-xs">
             <span className="text-muted">
               Weld Size (min {result.minimumWeldSize}&quot;, max{" "}
               {result.maximumWeldSize}&quot;)
             </span>
             <StatusBadge passes={result.sizeCheck} />
           </div>
-          <div className="flex items-center justify-between px-4 py-2.5 text-sm">
+          <div className="flex items-center justify-between px-4 py-2 text-xs">
             <span className="text-muted">
               Min Length (4w = {(result.effectiveThroat / 0.707 * 4).toFixed(2)}&quot;)
             </span>

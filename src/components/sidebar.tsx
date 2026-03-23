@@ -30,34 +30,34 @@ export function Sidebar() {
       {/* Mobile toggle */}
       <button
         onClick={() => setOpen(!open)}
-        className="fixed top-4 left-4 z-50 rounded-lg bg-sidebar p-2 text-white md:hidden no-print"
+        className="fixed top-4 left-4 z-50 rounded-md bg-surface p-2 text-foreground md:hidden no-print"
         aria-label="Toggle navigation"
       >
-        {open ? <X size={20} /> : <Menu size={20} />}
+        {open ? <X size={18} /> : <Menu size={18} />}
       </button>
 
       {/* Overlay */}
       {open && (
         <div
-          className="fixed inset-0 z-30 bg-black/40 md:hidden"
+          className="fixed inset-0 z-30 bg-black/50 md:hidden"
           onClick={() => setOpen(false)}
         />
       )}
 
       {/* Sidebar */}
       <aside
-        className={`no-print fixed inset-y-0 left-0 z-40 flex w-56 flex-col bg-sidebar text-white transition-transform md:translate-x-0 ${
+        className={`no-print fixed inset-y-0 left-0 z-40 flex w-52 flex-col border-r border-border bg-sidebar transition-transform md:translate-x-0 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex h-14 items-center gap-2 border-b border-white/10 px-4">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-accent font-bold text-white text-sm">
+        <div className="flex h-12 items-center gap-2 border-b border-border px-4">
+          <div className="flex h-6 w-6 items-center justify-center rounded bg-primary font-semibold text-black text-[11px]">
             M
           </div>
-          <span className="text-lg font-semibold tracking-tight">Mechanis</span>
+          <span className="text-sm font-medium tracking-tight text-foreground">Mechanis</span>
         </div>
 
-        <nav className="flex-1 space-y-1 px-2 py-4">
+        <nav className="flex-1 space-y-0.5 px-2 py-3">
           {navItems.map((item) => {
             const isActive =
               item.href === "/"
@@ -69,20 +69,20 @@ export function Sidebar() {
                 key={item.href}
                 href={item.href}
                 onClick={() => setOpen(false)}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                className={`flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors ${
                   isActive
-                    ? "bg-sidebar-active text-white"
-                    : "text-white/70 hover:bg-sidebar-hover hover:text-white"
+                    ? "bg-surface text-foreground"
+                    : "text-muted hover:bg-surface-alt hover:text-foreground"
                 }`}
               >
-                <Icon size={18} />
+                <Icon size={15} />
                 {item.label}
               </Link>
             );
           })}
         </nav>
 
-        <div className="border-t border-white/10 px-4 py-3 text-xs text-white/40">
+        <div className="border-t border-border px-4 py-2.5 text-[11px] text-muted/50">
           AISC 360 Reference
         </div>
       </aside>

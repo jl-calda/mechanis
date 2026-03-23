@@ -28,8 +28,8 @@ const rows: { label: string; key: keyof ProfileShape; unit: string }[] = [
 export function ProfileViewer({ profile }: ProfileViewerProps) {
   return (
     <div className="rounded-lg border border-border bg-surface overflow-hidden">
-      <div className="border-b border-border bg-surface-alt px-4 py-2.5">
-        <h3 className="text-sm font-semibold text-foreground">
+      <div className="border-b border-border bg-surface-alt px-4 py-2">
+        <h3 className="text-xs font-medium text-muted uppercase tracking-wider">
           Section Properties
         </h3>
       </div>
@@ -40,12 +40,12 @@ export function ProfileViewer({ profile }: ProfileViewerProps) {
           return (
             <div
               key={row.key}
-              className="flex items-center justify-between px-4 py-2 text-sm"
+              className="flex items-center justify-between px-4 py-1.5 text-xs"
             >
               <span className="text-muted">{row.label}</span>
               <span className="font-mono text-foreground">
                 {typeof val === "number" ? val.toLocaleString() : val}{" "}
-                <span className="text-muted text-xs">{row.unit}</span>
+                <span className="text-muted/60">{row.unit}</span>
               </span>
             </div>
           );
