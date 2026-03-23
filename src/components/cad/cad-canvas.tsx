@@ -529,21 +529,29 @@ export function CadCanvas({ state, dispatch }: Props) {
     isResizing.current = false;
   }, [selRect, entities, dispatch]);
 
-  const handleWheel = useCallback(
-    (e: React.WheelEvent) => {
+  // Use a ref-based wheel handler so we can attach it as non-passive
+  // (React's onWheel is passive and cannot preventDefault)
+  const wheelDispatchRef = useRef(dispatch);
+  wheelDispatchRef.current = dispatch;
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const handler = (e: WheelEvent) => {
       e.preventDefault();
       const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      dispatch({
+      wheelDispatchRef.current({
         type: "ZOOM",
         delta,
         center: {
-          x: e.clientX - (svgRef.current?.getBoundingClientRect().left ?? 0),
-          y: e.clientY - (svgRef.current?.getBoundingClientRect().top ?? 0),
+          x: e.clientX - (svg.getBoundingClientRect().left ?? 0),
+          y: e.clientY - (svg.getBoundingClientRect().top ?? 0),
         },
       });
-    },
-    [dispatch]
-  );
+    };
+    svg.addEventListener("wheel", handler, { passive: false });
+    return () => svg.removeEventListener("wheel", handler);
+  }, []);
 
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -715,7 +723,6 @@ export function CadCanvas({ state, dispatch }: Props) {
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        onWheel={handleWheel}
         onDoubleClick={handleDoubleClick}
         onKeyDown={handleKeyDown}
         onContextMenu={(e) => e.preventDefault()}

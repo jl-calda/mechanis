@@ -165,7 +165,108 @@ export function getEntitySegments(e: import("@/types/cad").CadEntity): [Point2D,
 }
 
 /**
- * Trim a single segment at intersections with other entities.
+ * Check if a point lies on a segment (within tolerance).
+ * Returns the parameter t (0-1) along the segment, or null if not on segment.
+ */
+function pointOnSegment(pt: Point2D, a: Point2D, b: Point2D, tol: number = 0.05): number | null {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq < 1e-10) return null;
+  const t = ((pt.x - a.x) * dx + (pt.y - a.y) * dy) / lenSq;
+  if (t < 0.001 || t > 0.999) return null;
+  const proj = { x: a.x + t * dx, y: a.y + t * dy };
+  const d = distance(pt, proj);
+  return d < tol ? t : null;
+}
+
+/**
+ * Find all trim boundaries (intersections + endpoint contacts) on a segment
+ * from other entities. Returns sorted array of { t, pt } along the segment.
+ */
+function findTrimBoundaries(
+  segStart: Point2D,
+  segEnd: Point2D,
+  allEntities: import("@/types/cad").CadEntity[],
+  sourceId: string
+): { t: number; pt: Point2D }[] {
+  const dx = segEnd.x - segStart.x;
+  const dy = segEnd.y - segStart.y;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 1e-10) return [];
+  const lenSq = len * len;
+
+  const seen = new Set<string>();
+  const intersections: { t: number; pt: Point2D }[] = [];
+
+  const addPoint = (pt: Point2D, t: number) => {
+    if (t <= 0.001 || t >= 0.999) return;
+    // Deduplicate by rounding
+    const key = `${pt.x.toFixed(6)},${pt.y.toFixed(6)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    intersections.push({ t, pt });
+  };
+
+  for (const other of allEntities) {
+    if (other.id === sourceId) continue;
+    const otherSegs = getEntitySegments(other);
+
+    // Check segment-segment intersections
+    for (const otherSeg of otherSegs) {
+      const ip = segmentIntersection(segStart, segEnd, otherSeg[0], otherSeg[1]);
+      if (ip) {
+        const t = ((ip.x - segStart.x) * dx + (ip.y - segStart.y) * dy) / lenSq;
+        addPoint(ip, t);
+      }
+    }
+
+    // Check if other entity's endpoints lie on our segment
+    // (e.g., a line starts/ends on the trimmed line)
+    const endpoints = getEntityEndpoints(other);
+    for (const ep of endpoints) {
+      const t = pointOnSegment(ep, segStart, segEnd);
+      if (t !== null) {
+        const proj = { x: segStart.x + t * dx, y: segStart.y + t * dy };
+        addPoint(proj, t);
+      }
+    }
+  }
+
+  intersections.sort((a, b) => a.t - b.t);
+  return intersections;
+}
+
+/** Get all unique endpoints/vertices from an entity */
+function getEntityEndpoints(e: import("@/types/cad").CadEntity): Point2D[] {
+  switch (e.type) {
+    case "line":
+      return [e.start, e.end];
+    case "rectangle": {
+      return [
+        e.origin,
+        { x: e.origin.x + e.width, y: e.origin.y },
+        { x: e.origin.x + e.width, y: e.origin.y + e.height },
+        { x: e.origin.x, y: e.origin.y + e.height },
+      ];
+    }
+    case "polyline":
+      return [...e.points];
+    case "circle":
+      return [
+        { x: e.center.x + e.radius, y: e.center.y },
+        { x: e.center.x - e.radius, y: e.center.y },
+        { x: e.center.x, y: e.center.y + e.radius },
+        { x: e.center.x, y: e.center.y - e.radius },
+      ];
+    case "point":
+      return [e.position];
+    default:
+      return [];
+  }
+}
+
+/**
+ * Trim a single segment at intersections/contacts with other entities.
  * Returns 0, 1, or 2 line segments (the parts outside the click point).
  */
 function trimSegmentAtPoint(
@@ -182,24 +283,9 @@ function trimSegmentAtPoint(
   if (len < 1e-10) return [];
 
   const clickT = ((clickPt.x - segStart.x) * dx + (clickPt.y - segStart.y) * dy) / (len * len);
-
-  const intersections: { t: number; pt: Point2D }[] = [];
-  for (const other of allEntities) {
-    if (other.id === sourceId) continue;
-    for (const otherSeg of getEntitySegments(other)) {
-      const ip = segmentIntersection(segStart, segEnd, otherSeg[0], otherSeg[1]);
-      if (ip) {
-        const t = ((ip.x - segStart.x) * dx + (ip.y - segStart.y) * dy) / (len * len);
-        if (t > 0.001 && t < 0.999) {
-          intersections.push({ t, pt: ip });
-        }
-      }
-    }
-  }
+  const intersections = findTrimBoundaries(segStart, segEnd, allEntities, sourceId);
 
   if (intersections.length === 0) return [];
-
-  intersections.sort((a, b) => a.t - b.t);
 
   let before: { t: number; pt: Point2D } | null = null;
   let after: { t: number; pt: Point2D } | null = null;
@@ -284,8 +370,8 @@ export function trimEntityAtPoint(
 
 /**
  * Preview what a trim operation would remove.
- * Returns the segment that would be deleted (between the two nearest intersections
- * surrounding the click point), plus the entire entity's segments for hover highlight.
+ * Returns the segment that would be deleted (between the two nearest boundaries
+ * surrounding the click point), plus the entity id for hover highlight.
  */
 export function getTrimPreview(
   entity: import("@/types/cad").CadEntity,
@@ -317,26 +403,10 @@ export function getTrimPreview(
   if (len < 1e-10) return null;
 
   const clickT = ((clickPt.x - segStart.x) * dx + (clickPt.y - segStart.y) * dy) / (len * len);
-
-  // Find intersections on this segment with other entities
-  const intersections: { t: number; pt: Point2D }[] = [];
-  for (const other of allEntities) {
-    if (other.id === entity.id) continue;
-    for (const otherSeg of getEntitySegments(other)) {
-      const ip = segmentIntersection(segStart, segEnd, otherSeg[0], otherSeg[1]);
-      if (ip) {
-        const t = ((ip.x - segStart.x) * dx + (ip.y - segStart.y) * dy) / (len * len);
-        if (t > 0.001 && t < 0.999) {
-          intersections.push({ t, pt: ip });
-        }
-      }
-    }
-  }
+  const intersections = findTrimBoundaries(segStart, segEnd, allEntities, entity.id);
 
   if (intersections.length === 0) return null;
-  intersections.sort((a, b) => a.t - b.t);
 
-  // Find the two bounding intersections around the click point
   let before: { t: number; pt: Point2D } | null = null;
   let after: { t: number; pt: Point2D } | null = null;
   for (const ix of intersections) {
