@@ -1,12 +1,15 @@
+"use client";
+
 import Link from "next/link";
 import { Ruler, CircleDot, Zap, Database, PenTool } from "lucide-react";
+import { useAuth } from "@/components/auth-provider";
 
 const tools = [
   {
     href: "/profiles",
     title: "Profile Drawer",
     description:
-      "View steel cross-sections with annotated dimensions. Browse W-shapes, channels, angles, and HSS profiles.",
+      "View steel cross-sections with annotated dimensions. Standard AISC shapes or draw custom sections with CAD.",
     icon: Ruler,
     color: "bg-emerald-500/10 text-emerald-400",
   },
@@ -14,7 +17,7 @@ const tools = [
     href: "/bolts",
     title: "Bolt Calculator",
     description:
-      "Calculate bolt group capacity per AISC 360 Chapter J. Shear, bearing, and tearout checks with visual bolt patterns.",
+      "Calculate bolt group capacity per AISC 360 Chapter J. Standard grid layouts or custom bolt patterns with CAD.",
     icon: CircleDot,
     color: "bg-sky-500/10 text-sky-400",
   },
@@ -22,7 +25,7 @@ const tools = [
     href: "/welds",
     title: "Weld Calculator",
     description:
-      "Determine fillet and groove weld capacities. Includes directional strength increase and base metal checks.",
+      "Determine fillet and groove weld capacities. Standard inputs or draw custom weld layouts with CAD.",
     icon: Zap,
     color: "bg-amber-500/10 text-amber-400",
   },
@@ -38,25 +41,27 @@ const tools = [
     href: "/cad",
     title: "CAD Editor",
     description:
-      "Draw custom cross-sections, bolt layouts, and weld configurations. Compute section properties from arbitrary shapes.",
+      "Full drawing canvas for custom cross-sections, bolt layouts, and weld configurations. Region detection and section properties.",
     icon: PenTool,
     color: "bg-pink-500/10 text-pink-400",
   },
 ];
 
 export default function Home() {
+  const { user } = useAuth();
+
   return (
     <div className="pt-8 md:pt-4">
       <div className="mb-8">
         <h1 className="text-xl font-medium tracking-tight text-foreground">
-          Mechanis
+          {user ? `Welcome back${user.user_metadata?.full_name ? `, ${user.user_metadata.full_name.split(" ")[0]}` : ""}` : "Mechanis"}
         </h1>
         <p className="mt-1 text-xs text-muted">
           Structural engineering tools for steel design per AISC 360.
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {tools.map((tool) => {
           const Icon = tool.icon;
           return (

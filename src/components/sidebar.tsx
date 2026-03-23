@@ -11,9 +11,11 @@ import {
   PenTool,
   Menu,
   X,
+  LogOut,
 } from "lucide-react";
 import { useState } from "react";
 import { ThemeToggle } from "./theme-toggle";
+import { useAuth } from "./auth-provider";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -27,6 +29,10 @@ const navItems = [
 export function Sidebar() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const { user, signOut } = useAuth();
+
+  // Hide sidebar on login page
+  if (pathname === "/login") return null;
 
   return (
     <>
@@ -88,8 +94,37 @@ export function Sidebar() {
           })}
         </nav>
 
-        <div className="border-t border-border px-4 py-2.5 text-[11px] text-muted/50">
-          AISC 360 Reference
+        {/* User section */}
+        <div className="border-t border-border px-3 py-2.5">
+          {user ? (
+            <div className="flex items-center gap-2">
+              {user.user_metadata?.avatar_url ? (
+                <img
+                  src={user.user_metadata.avatar_url}
+                  alt=""
+                  className="h-6 w-6 rounded-full"
+                />
+              ) : (
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-surface-alt text-[10px] font-medium text-muted">
+                  {(user.email?.[0] ?? "U").toUpperCase()}
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="truncate text-[11px] text-foreground">
+                  {user.user_metadata?.full_name ?? user.email}
+                </div>
+              </div>
+              <button
+                onClick={signOut}
+                className="text-muted hover:text-danger transition-colors"
+                title="Sign out"
+              >
+                <LogOut size={13} />
+              </button>
+            </div>
+          ) : (
+            <div className="text-[11px] text-muted/50">AISC 360 Reference</div>
+          )}
         </div>
       </aside>
     </>
