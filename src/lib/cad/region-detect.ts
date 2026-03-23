@@ -244,7 +244,6 @@ function signedArea(pts: Point2D[]): number {
 export function autoDetectRegions(entities: CadEntity[]): ClosedRegion[] {
   const rawSegs = collectAllSegments(entities);
   if (rawSegs.length < 2) {
-    // Fall back to simple closed-shape detection
     return simpleDetect(entities);
   }
 
@@ -256,10 +255,7 @@ export function autoDetectRegions(entities: CadEntity[]): ClosedRegion[] {
 
   const regions: ClosedRegion[] = [];
   for (const face of faces) {
-    const area = signedArea(face);
-    // Skip the outer (unbounded) face — it has the largest absolute area
-    // Also skip very tiny faces (numerical noise)
-    const absArea = Math.abs(area);
+    const absArea = Math.abs(signedArea(face));
     if (absArea < 0.01) continue;
 
     const props = computeRegionProps(face);
@@ -269,6 +265,19 @@ export function autoDetectRegions(entities: CadEntity[]): ClosedRegion[] {
       ...props,
       source: "auto", sign: "add",
     });
+  }
+
+  // Also include simple closed shapes that the planar graph may have missed
+  const simpleRegions = simpleDetect(entities);
+  for (const sr of simpleRegions) {
+    // Check if this simple region's centroid is already inside an existing
+    // graph face — if so, the graph already covers it
+    const alreadyCovered = regions.some(
+      (r) => pointInPolygon(sr.centroid, r.boundary) && Math.abs(r.area - sr.area) / sr.area < 0.3
+    );
+    if (!alreadyCovered) {
+      regions.push(sr);
+    }
   }
 
   // Sort by area ascending so smallest faces come first (inner regions)
@@ -319,6 +328,9 @@ export function manualPickRegion(
   clickPt: Point2D,
   entities: CadEntity[]
 ): ClosedRegion | null {
+  let bestRegion: ClosedRegion | null = null;
+  let bestArea = Infinity;
+
   const rawSegs = collectAllSegments(entities);
 
   if (rawSegs.length >= 2) {
@@ -329,9 +341,6 @@ export function manualPickRegion(
       const faces = findFaces(graph);
 
       // Find all faces containing the click point, pick the smallest
-      let bestRegion: ClosedRegion | null = null;
-      let bestArea = Infinity;
-
       for (const face of faces) {
         const absArea = Math.abs(signedArea(face));
         if (absArea < 0.01) continue;
@@ -346,12 +355,12 @@ export function manualPickRegion(
           };
         }
       }
-
-      if (bestRegion) return bestRegion;
     }
   }
 
-  // Fallback: check simple closed shapes
+  // Also consider simple closed shapes as candidates (not just fallback)
+  // This handles cases where the planar graph misses a face or produces
+  // a malformed face that's larger than the actual closed shape
   for (const e of entities) {
     let polygon: Point2D[] | null = null;
     switch (e.type) {
@@ -369,10 +378,14 @@ export function manualPickRegion(
         break;
     }
     if (polygon && pointInPolygon(clickPt, polygon)) {
-      const props = computeRegionProps(polygon);
-      return { id: generateId(), boundary: polygon, ...props, source: "manual", sign: "add" };
+      const absArea = Math.abs(signedArea(polygon));
+      if (absArea < bestArea) {
+        bestArea = absArea;
+        const props = computeRegionProps(polygon);
+        bestRegion = { id: generateId(), boundary: polygon, ...props, source: "manual", sign: "add" };
+      }
     }
   }
 
-  return null;
+  return bestRegion;
 }
