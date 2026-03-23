@@ -45,8 +45,8 @@ export function BoltPatternSvg({ input, result }: BoltPatternSvgProps) {
         y={pad}
         width={plateW * scale}
         height={plateH * scale}
-        fill="#222"
-        stroke="#555"
+        fill="var(--svg-fill)"
+        stroke="var(--svg-stroke)"
         strokeWidth={1.5}
         rx={2}
       />
@@ -90,13 +90,13 @@ export function BoltPatternSvg({ input, result }: BoltPatternSvgProps) {
             y1={bolts[0].cy}
             x2={pad + plateW * scale + 15}
             y2={bolts[numCols].cy}
-            stroke="#555"
+            stroke="var(--svg-stroke)"
             strokeWidth={0.8}
           />
           <text
             x={pad + plateW * scale + 20}
             y={(bolts[0].cy + bolts[numCols].cy) / 2}
-            fill="#888"
+            fill="var(--svg-dim)"
             fontSize={9}
             fontFamily="monospace"
             dominantBaseline="middle"
@@ -114,13 +114,13 @@ export function BoltPatternSvg({ input, result }: BoltPatternSvgProps) {
             y1={pad - 10}
             x2={bolts[1].cx}
             y2={pad - 10}
-            stroke="#555"
+            stroke="var(--svg-stroke)"
             strokeWidth={0.8}
           />
           <text
             x={(bolts[0].cx + bolts[1].cx) / 2}
             y={pad - 14}
-            fill="#888"
+            fill="var(--svg-dim)"
             fontSize={9}
             fontFamily="monospace"
             textAnchor="middle"
@@ -134,7 +134,7 @@ export function BoltPatternSvg({ input, result }: BoltPatternSvgProps) {
       <text
         x={pad + 4}
         y={pad + edgeDistVert * scale / 2}
-        fill="#888"
+        fill="var(--svg-dim)"
         fontSize={8}
         fontFamily="monospace"
       >

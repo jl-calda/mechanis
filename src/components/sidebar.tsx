@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
+import { ThemeToggle } from "./theme-toggle";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -50,11 +51,14 @@ export function Sidebar() {
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex h-12 items-center gap-2 border-b border-border px-4">
-          <div className="flex h-6 w-6 items-center justify-center rounded bg-primary font-semibold text-black text-[11px]">
-            M
+        <div className="flex h-12 items-center justify-between border-b border-border px-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded bg-primary font-semibold text-black text-[11px]">
+              M
+            </div>
+            <span className="text-sm font-medium tracking-tight text-foreground">Mechanis</span>
           </div>
-          <span className="text-sm font-medium tracking-tight text-foreground">Mechanis</span>
+          <ThemeToggle />
         </div>
 
         <nav className="flex-1 space-y-0.5 px-2 py-3">
@@ -71,8 +75,8 @@ export function Sidebar() {
                 onClick={() => setOpen(false)}
                 className={`flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors ${
                   isActive
-                    ? "bg-surface text-foreground"
-                    : "text-muted hover:bg-surface-alt hover:text-foreground"
+                    ? "bg-surface-alt text-foreground"
+                    : "text-muted hover:bg-sidebar-hover hover:text-foreground"
                 }`}
               >
                 <Icon size={15} />

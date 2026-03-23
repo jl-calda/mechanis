@@ -26,8 +26,8 @@ export function WeldDiagramSvg({ input, result }: WeldDiagramSvgProps) {
         y={baseY}
         width={plateW}
         height={plateH * 0.4}
-        fill="#2a2a2a"
-        stroke="#555"
+        fill="var(--svg-fill)"
+        stroke="var(--svg-stroke)"
         strokeWidth={1.5}
       />
 
@@ -37,8 +37,8 @@ export function WeldDiagramSvg({ input, result }: WeldDiagramSvgProps) {
         y={baseY - plateH * 1.2}
         width={16}
         height={plateH * 1.2}
-        fill="#2a2a2a"
-        stroke="#555"
+        fill="var(--svg-fill)"
+        stroke="var(--svg-stroke)"
         strokeWidth={1.5}
       />
 
@@ -68,7 +68,7 @@ export function WeldDiagramSvg({ input, result }: WeldDiagramSvgProps) {
       <text
         x={baseX - 8 - weldSize - 5}
         y={baseY - weldSize / 2}
-        fill="#888"
+        fill="var(--svg-dim)"
         fontSize={9}
         fontFamily="monospace"
         textAnchor="end"
@@ -119,7 +119,7 @@ export function WeldDiagramSvg({ input, result }: WeldDiagramSvgProps) {
       <text
         x={w / 2}
         y={h - 15}
-        fill="#888"
+        fill="var(--svg-dim)"
         fontSize={9}
         fontFamily="monospace"
         textAnchor="middle"
