@@ -414,6 +414,23 @@ export function CadCanvas({ state, dispatch }: Props) {
         return;
       }
 
+      // In drawing modes, clicking on an existing entity selects it (if not mid-draw)
+      if (!drawState && activeTool !== "point") {
+        const hitId = hitTest(world);
+        if (hitId) {
+          if (e.shiftKey) {
+            dispatch({ type: "TOGGLE_SELECT", id: hitId });
+          } else {
+            dispatch({ type: "SELECT", ids: [hitId] });
+          }
+          return;
+        }
+        // Clicking empty space clears selection
+        if (selectedIds.length > 0 && !e.shiftKey) {
+          dispatch({ type: "CLEAR_SELECTION" });
+        }
+      }
+
       // Drawing tools
       if (activeTool === "point") {
         dispatch({ type: "ADD_ENTITY", entity: { id: generateId(), type: "point", position: pt, stroke: "", strokeWidth: 1, locked: false } });
