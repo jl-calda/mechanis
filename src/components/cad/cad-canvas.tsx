@@ -3,7 +3,7 @@
 import { useRef, useCallback, useState, useMemo, useEffect } from "react";
 import type { CadState, Point2D, CadEntity } from "@/types/cad";
 import type { CadAction } from "@/lib/cad-reducer";
-import { snapToGrid, generateId, distance, midpoint, pointNearSegment, pointNearCircle, pointNearEllipse, getEntitySnapPoints, getEntityBounds, trimEntityAtPoint } from "@/lib/cad/geometry";
+import { snapToGrid, generateId, distance, midpoint, pointNearSegment, pointNearCircle, pointNearEllipse, getEntitySnapPoints, getEntityBounds, trimEntityAtPoint, getTrimPreview, getEntitySegments } from "@/lib/cad/geometry";
 import { manualPickRegion } from "@/lib/cad/region-detect";
 import { CadGrid } from "./cad-grid";
 import { CadEntityRenderer } from "./cad-entity-renderer";
@@ -71,6 +71,12 @@ export function CadCanvas({ state, dispatch }: Props) {
   const [previewPt, setPreviewPt] = useState<Point2D | null>(null);
   const [snapPt, setSnapPt] = useState<Point2D | null>(null);
   const [snapType, setSnapType] = useState<"grid" | "node" | null>(null);
+
+  // Trim hover state
+  const [trimHover, setTrimHover] = useState<{
+    entityId: string;
+    removedSegment: [Point2D, Point2D];
+  } | null>(null);
 
   // Pan state
   const isPanning = useRef(false);
@@ -482,8 +488,26 @@ export function CadCanvas({ state, dispatch }: Props) {
         const dy = e.clientY - panStart.current.y;
         dispatch({ type: "SET_VIEWPORT", viewport: { ...viewport, panX: panStart.current.panX + dx, panY: panStart.current.panY + dy } });
       }
+
+      // Trim hover preview
+      if (activeTool === "trim") {
+        const hitId = hitTest(world);
+        if (hitId) {
+          const entity = entities.find((ent) => ent.id === hitId);
+          if (entity) {
+            const preview = getTrimPreview(entity, world, entities);
+            setTrimHover(preview);
+          } else {
+            setTrimHover(null);
+          }
+        } else {
+          setTrimHover(null);
+        }
+      } else if (trimHover) {
+        setTrimHover(null);
+      }
     },
-    [screenToWorld, doSnap, viewport, dispatch, grid, entities]
+    [screenToWorld, doSnap, viewport, dispatch, grid, entities, activeTool, hitTest, trimHover]
   );
 
   const handlePointerUp = useCallback(() => {
@@ -664,6 +688,7 @@ export function CadCanvas({ state, dispatch }: Props) {
   let cursorStyle = "crosshair";
   if (activeTool === "pan") cursorStyle = "grab";
   else if (activeTool === "select") cursorStyle = isDragging.current ? "grabbing" : "default";
+  else if (activeTool === "trim") cursorStyle = trimHover ? "pointer" : "crosshair";
 
   // Collect nearby snap points for rendering (only the visible ones near cursor)
   const visibleSnaps = useMemo(() => {
@@ -706,8 +731,28 @@ export function CadCanvas({ state, dispatch }: Props) {
 
         {/* Entities */}
         {entities.map((e) => (
-          <CadEntityRenderer key={e.id} entity={e} selected={selectedIds.includes(e.id)} />
+          <CadEntityRenderer
+            key={e.id}
+            entity={e}
+            selected={selectedIds.includes(e.id)}
+            trimHover={activeTool === "trim" && trimHover?.entityId === e.id}
+          />
         ))}
+
+        {/* Trim preview — show segment that would be removed */}
+        {activeTool === "trim" && trimHover && (
+          <line
+            x1={trimHover.removedSegment[0].x}
+            y1={trimHover.removedSegment[0].y}
+            x2={trimHover.removedSegment[1].x}
+            y2={trimHover.removedSegment[1].y}
+            stroke="var(--danger)"
+            strokeWidth={0.18}
+            strokeLinecap="round"
+            strokeDasharray="0.15 0.1"
+            opacity={0.7}
+          />
+        )}
 
         {/* Snap point indicators */}
         {visibleSnaps.map((sp, i) => (
@@ -936,7 +981,7 @@ export function CadCanvas({ state, dispatch }: Props) {
             : activeTool === "dimension"
               ? !drawState ? "Click first node" : drawState.points.length === 1 ? "Click second node" : "Click to set offset distance"
               : activeTool === "trim"
-                ? "Click a line, rectangle, or polyline to trim at intersections"
+                ? "Hover to highlight · Click to trim at intersections"
                 : activeTool === "region-pick"
                   ? "Click inside a closed shape to detect region"
                   : drawState ? "Click to set second point · Esc to cancel" : "Click to start drawing · Esc to cancel · F to zoom fit"}

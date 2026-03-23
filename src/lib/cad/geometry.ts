@@ -282,6 +282,74 @@ export function trimEntityAtPoint(
   return result;
 }
 
+/**
+ * Preview what a trim operation would remove.
+ * Returns the segment that would be deleted (between the two nearest intersections
+ * surrounding the click point), plus the entire entity's segments for hover highlight.
+ */
+export function getTrimPreview(
+  entity: import("@/types/cad").CadEntity,
+  clickPt: Point2D,
+  allEntities: import("@/types/cad").CadEntity[]
+): { removedSegment: [Point2D, Point2D]; entityId: string } | null {
+  const segments = getEntitySegments(entity);
+  if (segments.length === 0) return null;
+
+  // Find which segment the click is nearest to
+  let bestIdx = 0;
+  let bestDist = Infinity;
+  for (let i = 0; i < segments.length; i++) {
+    const [a, b] = segments[i];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq === 0) continue;
+    let t = ((clickPt.x - a.x) * dx + (clickPt.y - a.y) * dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+    const proj = { x: a.x + t * dx, y: a.y + t * dy };
+    const d = distance(clickPt, proj);
+    if (d < bestDist) { bestDist = d; bestIdx = i; }
+  }
+
+  const [segStart, segEnd] = segments[bestIdx];
+  const dx = segEnd.x - segStart.x;
+  const dy = segEnd.y - segStart.y;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 1e-10) return null;
+
+  const clickT = ((clickPt.x - segStart.x) * dx + (clickPt.y - segStart.y) * dy) / (len * len);
+
+  // Find intersections on this segment with other entities
+  const intersections: { t: number; pt: Point2D }[] = [];
+  for (const other of allEntities) {
+    if (other.id === entity.id) continue;
+    for (const otherSeg of getEntitySegments(other)) {
+      const ip = segmentIntersection(segStart, segEnd, otherSeg[0], otherSeg[1]);
+      if (ip) {
+        const t = ((ip.x - segStart.x) * dx + (ip.y - segStart.y) * dy) / (len * len);
+        if (t > 0.001 && t < 0.999) {
+          intersections.push({ t, pt: ip });
+        }
+      }
+    }
+  }
+
+  if (intersections.length === 0) return null;
+  intersections.sort((a, b) => a.t - b.t);
+
+  // Find the two bounding intersections around the click point
+  let before: { t: number; pt: Point2D } | null = null;
+  let after: { t: number; pt: Point2D } | null = null;
+  for (const ix of intersections) {
+    if (ix.t < clickT) before = ix;
+    if (ix.t > clickT && !after) after = ix;
+  }
+
+  const removeStart = before ? before.pt : segStart;
+  const removeEnd = after ? after.pt : segEnd;
+
+  return { removedSegment: [removeStart, removeEnd], entityId: entity.id };
+}
+
 /** Collect snap points (endpoints + midpoints) from an entity */
 export function getEntitySnapPoints(e: import("@/types/cad").CadEntity): Point2D[] {
   const pts: Point2D[] = [];

@@ -6,14 +6,17 @@ import { distance } from "@/lib/cad/geometry";
 interface Props {
   entity: CadEntity;
   selected: boolean;
+  trimHover?: boolean;
 }
 
 const SEL_COLOR = "var(--primary)";
+const TRIM_HOVER_COLOR = "#f97316";
 const LOCK_COLOR = "var(--danger)";
 const ENTITY_COLOR = "#e2e2e2";
 const ENTITY_COLOR_DARK = "var(--svg-stroke)";
 const STROKE_W = 0.12;
 const SEL_STROKE_W = 0.14;
+const TRIM_HOVER_STROKE_W = 0.16;
 const HANDLE_R = 0.16;
 const NODE_R = 0.1;
 
@@ -67,9 +70,9 @@ function NodeDot({ x, y }: { x: number; y: number }) {
   );
 }
 
-export function CadEntityRenderer({ entity, selected }: Props) {
-  const stroke = selected ? SEL_COLOR : ENTITY_COLOR_DARK;
-  const sw = selected ? SEL_STROKE_W : STROKE_W;
+export function CadEntityRenderer({ entity, selected, trimHover }: Props) {
+  const stroke = trimHover ? TRIM_HOVER_COLOR : selected ? SEL_COLOR : ENTITY_COLOR_DARK;
+  const sw = trimHover ? TRIM_HOVER_STROKE_W : selected ? SEL_STROKE_W : STROKE_W;
   const lh = entity.lockedHandles ?? [];
   const isHL = (i: number) => lh.includes(i);
 
