@@ -824,6 +824,9 @@ export function getFilletPreviewFromEdges(
 /**
  * Recompute fillet geometry when the arc radius changes.
  * Returns updated arc + line entities, or null if the new radius is invalid.
+ *
+ * Convention: fillet lines are always created with start=far, end=tangent,
+ * so lineA.start and lineB.start are the "far" endpoints that stay fixed.
  */
 export function recomputeFilletRadius(
   arc: import("@/types/cad").ArcEntity,
@@ -831,63 +834,14 @@ export function recomputeFilletRadius(
   lineB: import("@/types/cad").LineEntity,
   newRadius: number
 ): { arc: Partial<import("@/types/cad").ArcEntity>; lineA: Partial<import("@/types/cad").LineEntity>; lineB: Partial<import("@/types/cad").LineEntity> } | null {
-  // The "far" endpoint of each line is the one NOT touching the arc.
-  // Determine which endpoint of each line is the tangent point (closest to arc).
-  const arcStart = {
-    x: arc.center.x + arc.radius * Math.cos(arc.startAngle),
-    y: arc.center.y + arc.radius * Math.sin(arc.startAngle),
-  };
-  const arcEnd = {
-    x: arc.center.x + arc.radius * Math.cos(arc.endAngle),
-    y: arc.center.y + arc.radius * Math.sin(arc.endAngle),
-  };
-
-  // Figure out which arc endpoint connects to which line
-  const dAStartToArcStart = distance(lineA.start, arcStart);
-  const dAStartToArcEnd = distance(lineA.start, arcEnd);
-  const dAEndToArcStart = distance(lineA.end, arcStart);
-  const dAEndToArcEnd = distance(lineA.end, arcEnd);
-
-  // Find the closest pair for line A
-  const minA = Math.min(dAStartToArcStart, dAStartToArcEnd, dAEndToArcStart, dAEndToArcEnd);
-  let farA: Point2D;
-  if (minA === dAEndToArcStart || minA === dAEndToArcEnd) {
-    // lineA.end is the tangent end, lineA.start is far
-    farA = lineA.start;
-  } else {
-    farA = lineA.end;
-  }
-
-  const dBStartToArcStart = distance(lineB.start, arcStart);
-  const dBStartToArcEnd = distance(lineB.start, arcEnd);
-  const dBEndToArcStart = distance(lineB.end, arcStart);
-  const dBEndToArcEnd = distance(lineB.end, arcEnd);
-
-  const minB = Math.min(dBStartToArcStart, dBStartToArcEnd, dBEndToArcStart, dBEndToArcEnd);
-  let farB: Point2D;
-  if (minB === dBEndToArcStart || minB === dBEndToArcEnd) {
-    farB = lineB.start;
-  } else {
-    farB = lineB.end;
-  }
-
-  // Use the current tangent endpoints to define the line directions through the corner
-  const tangentA = farA === lineA.start ? lineA.end : lineA.start;
-  const tangentB = farB === lineB.start ? lineB.end : lineB.start;
-
-  // Recompute fillet with the new radius using the full line directions
+  // Fillet lines are created with start=far, end=tangent.
+  // Use the far (start) and tangent (end) to define line direction.
   const geom = computeFilletGeometry(
-    { start: farA, end: tangentA },
-    { start: farB, end: tangentB },
+    { start: lineA.start, end: lineA.end },
+    { start: lineB.start, end: lineB.end },
     newRadius
   );
   if (!geom) return null;
-
-  // Determine which line endpoint to update (the tangent end)
-  const lineAChanges: Partial<import("@/types/cad").LineEntity> =
-    farA === lineA.start ? { end: geom.tangentA } : { start: geom.tangentA };
-  const lineBChanges: Partial<import("@/types/cad").LineEntity> =
-    farB === lineB.start ? { end: geom.tangentB } : { start: geom.tangentB };
 
   return {
     arc: {
@@ -896,7 +850,7 @@ export function recomputeFilletRadius(
       startAngle: geom.arcStartAngle,
       endAngle: geom.arcEndAngle,
     },
-    lineA: lineAChanges,
-    lineB: lineBChanges,
+    lineA: { end: geom.tangentA },
+    lineB: { end: geom.tangentB },
   };
 }
