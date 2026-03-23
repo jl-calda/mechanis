@@ -30,6 +30,7 @@ export type CadAction =
   | { type: "RESIZE_HANDLE"; id: string; handleIndex: number; newPos: Point2D }
   | { type: "TOGGLE_HANDLE_LOCK"; id: string; handleIndex: number }
   | { type: "REPLACE_ENTITY"; id: string; newEntities: CadEntity[] }
+  | { type: "REPLACE_ENTITIES"; ids: string[]; newEntities: CadEntity[] }
   | { type: "ZOOM_TO_FIT"; canvasWidth: number; canvasHeight: number }
   | { type: "UNDO" }
   | { type: "REDO" };
@@ -244,6 +245,16 @@ export function cadReducer(state: CadState, action: CadAction): CadState {
       return {
         ...pushHistory(state, newEntities),
         selectedIds: state.selectedIds.filter((sid) => sid !== action.id),
+      };
+    }
+
+    case "REPLACE_ENTITIES": {
+      const removeSet = new Set(action.ids);
+      const newEntities = state.entities.filter((e) => !removeSet.has(e.id));
+      newEntities.push(...action.newEntities);
+      return {
+        ...pushHistory(state, newEntities),
+        selectedIds: state.selectedIds.filter((sid) => !removeSet.has(sid)),
       };
     }
 

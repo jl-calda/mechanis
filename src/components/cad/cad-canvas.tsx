@@ -3,7 +3,7 @@
 import { useRef, useCallback, useState, useMemo, useEffect } from "react";
 import type { CadState, Point2D, CadEntity } from "@/types/cad";
 import type { CadAction } from "@/lib/cad-reducer";
-import { snapToGrid, generateId, distance, midpoint, pointNearSegment, pointNearCircle, pointNearEllipse, getEntitySnapPoints, getEntityBounds, trimEntityAtPoint, getTrimPreview, getEntitySegments } from "@/lib/cad/geometry";
+import { snapToGrid, generateId, distance, midpoint, pointNearSegment, pointNearCircle, pointNearEllipse, getEntitySnapPoints, getEntityBounds, trimEntityAtPoint, getTrimPreview, getEntitySegments, computeFillet, getFilletPreview } from "@/lib/cad/geometry";
 import { manualPickRegion } from "@/lib/cad/region-detect";
 import { CadGrid } from "./cad-grid";
 import { CadEntityRenderer } from "./cad-entity-renderer";
@@ -77,6 +77,16 @@ export function CadCanvas({ state, dispatch }: Props) {
     entityId: string;
     removedSegment: [Point2D, Point2D];
   } | null>(null);
+
+  // Fillet state
+  const [filletFirstId, setFilletFirstId] = useState<string | null>(null);
+  const [filletRadius, setFilletRadius] = useState(0.25);
+  const [filletPreview, setFilletPreview] = useState<{
+    arcPoints: Point2D[];
+    tangentA: Point2D;
+    tangentB: Point2D;
+  } | null>(null);
+  const [filletHoverId, setFilletHoverId] = useState<string | null>(null);
 
   // Pan state
   const isPanning = useRef(false);
@@ -303,6 +313,33 @@ export function CadCanvas({ state, dispatch }: Props) {
         return;
       }
 
+      // Fillet mode — two-click: first line, then second line
+      if (activeTool === "fillet") {
+        const hitId = hitTest(world);
+        if (hitId) {
+          const entity = entities.find((ent) => ent.id === hitId);
+          if (entity && entity.type === "line") {
+            if (!filletFirstId) {
+              // First click — select first line
+              setFilletFirstId(hitId);
+            } else if (hitId !== filletFirstId) {
+              // Second click — compute fillet
+              const firstEntity = entities.find((ent) => ent.id === filletFirstId);
+              if (firstEntity && firstEntity.type === "line") {
+                const result = computeFillet(firstEntity, entity, filletRadius);
+                if (result) {
+                  dispatch({ type: "REPLACE_ENTITIES", ids: result.removedIds, newEntities: result.newEntities });
+                }
+              }
+              setFilletFirstId(null);
+              setFilletPreview(null);
+              setFilletHoverId(null);
+            }
+          }
+        }
+        return;
+      }
+
       // Select mode
       if (activeTool === "select") {
         // Check if clicking on a resize handle of an already-selected entity
@@ -430,13 +467,13 @@ export function CadCanvas({ state, dispatch }: Props) {
         return;
       }
     },
-    [activeTool, drawState, screenToWorld, doSnap, hitTest, dispatch, entities, viewport, selectedIds, editingDim]
+    [activeTool, drawState, screenToWorld, doSnap, hitTest, dispatch, entities, viewport, selectedIds, editingDim, filletFirstId, filletRadius]
   );
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
       const world = screenToWorld(e.clientX, e.clientY);
-      const noSnap = activeTool === "trim" || activeTool === "region-pick";
+      const noSnap = activeTool === "trim" || activeTool === "fillet" || activeTool === "region-pick";
       const snapResult = noSnap ? { pt: world, type: null as "grid" | "node" | null } : doSnap(world);
       setCursorPos(snapResult.pt);
       setPreviewPt(snapResult.pt);
@@ -507,8 +544,40 @@ export function CadCanvas({ state, dispatch }: Props) {
       } else if (trimHover) {
         setTrimHover(null);
       }
+
+      // Fillet hover preview
+      if (activeTool === "fillet") {
+        const hitId = hitTest(world);
+        if (hitId) {
+          const entity = entities.find((ent) => ent.id === hitId);
+          if (entity && entity.type === "line") {
+            setFilletHoverId(hitId);
+            if (filletFirstId && hitId !== filletFirstId) {
+              const firstEntity = entities.find((ent) => ent.id === filletFirstId);
+              if (firstEntity && firstEntity.type === "line") {
+                const preview = getFilletPreview(firstEntity, entity, filletRadius);
+                setFilletPreview(preview);
+              } else {
+                setFilletPreview(null);
+              }
+            } else {
+              setFilletPreview(null);
+            }
+          } else {
+            setFilletHoverId(null);
+            setFilletPreview(null);
+          }
+        } else {
+          setFilletHoverId(null);
+          setFilletPreview(null);
+        }
+      } else {
+        if (filletHoverId) setFilletHoverId(null);
+        if (filletPreview) setFilletPreview(null);
+        if (filletFirstId) setFilletFirstId(null);
+      }
     },
-    [screenToWorld, doSnap, viewport, dispatch, grid, entities, activeTool, hitTest, trimHover]
+    [screenToWorld, doSnap, viewport, dispatch, grid, entities, activeTool, hitTest, trimHover, filletFirstId, filletRadius, filletHoverId, filletPreview]
   );
 
   const handlePointerUp = useCallback(() => {
@@ -665,8 +734,13 @@ export function CadCanvas({ state, dispatch }: Props) {
       }
 
       if (e.key === "Escape") {
-        dispatch({ type: "SET_DRAW_STATE", points: null });
-        dispatch({ type: "SET_TOOL", tool: "select" });
+        if (activeTool === "fillet" && filletFirstId) {
+          setFilletFirstId(null);
+          setFilletPreview(null);
+        } else {
+          dispatch({ type: "SET_DRAW_STATE", points: null });
+          dispatch({ type: "SET_TOOL", tool: "select" });
+        }
       }
       if ((e.key === "Delete" || e.key === "Backspace") && selectedIds.length > 0) {
         dispatch({ type: "DELETE_ENTITIES", ids: selectedIds });
@@ -681,8 +755,13 @@ export function CadCanvas({ state, dispatch }: Props) {
         dispatch({ type: "ADD_ENTITY", entity: { id: generateId(), type: "polyline", points: drawState.points, closed: true, thickness: 0, stroke: "", strokeWidth: 1, locked: false } });
         dispatch({ type: "SET_DRAW_STATE", points: null });
       }
+      // Fillet radius adjustment
+      if (activeTool === "fillet") {
+        if (e.key === "+" || e.key === "=") setFilletRadius((r) => Math.round((r + 0.05) * 100) / 100);
+        if (e.key === "-" || e.key === "_") setFilletRadius((r) => Math.max(0.05, Math.round((r - 0.05) * 100) / 100));
+      }
     },
-    [activeTool, drawState, selectedIds, dispatch, editingDim, showTooltipInput]
+    [activeTool, drawState, selectedIds, dispatch, editingDim, showTooltipInput, filletFirstId]
   );
 
   // Compute viewBox
@@ -698,6 +777,7 @@ export function CadCanvas({ state, dispatch }: Props) {
   if (activeTool === "pan") cursorStyle = "grab";
   else if (activeTool === "select") cursorStyle = isDragging.current ? "grabbing" : "default";
   else if (activeTool === "trim") cursorStyle = trimHover ? "pointer" : "crosshair";
+  else if (activeTool === "fillet") cursorStyle = filletHoverId ? "pointer" : "crosshair";
 
   // Collect nearby snap points for rendering (only the visible ones near cursor)
   const visibleSnaps = useMemo(() => {
@@ -742,8 +822,11 @@ export function CadCanvas({ state, dispatch }: Props) {
           <CadEntityRenderer
             key={e.id}
             entity={e}
-            selected={selectedIds.includes(e.id)}
-            trimHover={activeTool === "trim" && trimHover?.entityId === e.id}
+            selected={selectedIds.includes(e.id) || (activeTool === "fillet" && e.id === filletFirstId)}
+            trimHover={
+              (activeTool === "trim" && trimHover?.entityId === e.id) ||
+              (activeTool === "fillet" && e.id === filletHoverId && e.id !== filletFirstId)
+            }
           />
         ))}
 
@@ -760,6 +843,23 @@ export function CadCanvas({ state, dispatch }: Props) {
             strokeDasharray="0.15 0.1"
             opacity={0.7}
           />
+        )}
+
+        {/* Fillet preview — show arc that would be created */}
+        {activeTool === "fillet" && filletPreview && (
+          <g>
+            <polyline
+              points={filletPreview.arcPoints.map((p) => `${p.x},${p.y}`).join(" ")}
+              fill="none"
+              stroke="var(--primary)"
+              strokeWidth={0.14}
+              strokeLinecap="round"
+              opacity={0.8}
+            />
+            {/* Tangent point markers */}
+            <circle cx={filletPreview.tangentA.x} cy={filletPreview.tangentA.y} r={0.1} fill="var(--primary)" opacity={0.6} />
+            <circle cx={filletPreview.tangentB.x} cy={filletPreview.tangentB.y} r={0.1} fill="var(--primary)" opacity={0.6} />
+          </g>
         )}
 
         {/* Snap point indicators */}
@@ -990,9 +1090,11 @@ export function CadCanvas({ state, dispatch }: Props) {
               ? !drawState ? "Click first node" : drawState.points.length === 1 ? "Click second node" : "Click to set offset distance"
               : activeTool === "trim"
                 ? "Hover to highlight · Click to trim at intersections"
-                : activeTool === "region-pick"
-                  ? "Click inside a closed shape to detect region"
-                  : drawState ? "Click to set second point · Esc to cancel" : "Click to start drawing · Esc to cancel · F to zoom fit"}
+                : activeTool === "fillet"
+                  ? !filletFirstId ? `Click first line · r=${filletRadius}` : "Click second line to fillet"
+                  : activeTool === "region-pick"
+                    ? "Click inside a closed shape to detect region"
+                    : drawState ? "Click to set second point · Esc to cancel" : "Click to start drawing · Esc to cancel · F to zoom fit"}
       </div>
 
       {/* Editable dimension input overlay */}

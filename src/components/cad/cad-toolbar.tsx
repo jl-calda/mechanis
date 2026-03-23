@@ -12,6 +12,7 @@ import {
   Move,
   Ruler,
   Scissors,
+  CornerDownRight,
   ScanSearch,
   Grid3x3,
   Magnet,
@@ -51,6 +52,7 @@ const tools: { tool: ToolType; icon: typeof MousePointer2; label: string }[] = [
   { tool: "ellipse", icon: Ellipsis, label: "Ellipse" },
   { tool: "dimension", icon: Ruler, label: "Dimension" },
   { tool: "trim", icon: Scissors, label: "Trim" },
+  { tool: "fillet", icon: CornerDownRight, label: "Fillet" },
   { tool: "region-pick", icon: ScanSearch, label: "Pick Region" },
 ];
 

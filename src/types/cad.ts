@@ -8,6 +8,7 @@ export type ToolType =
   | "ellipse"
   | "dimension"
   | "trim"
+  | "fillet"
   | "pan"
   | "region-pick";
 

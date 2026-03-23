@@ -512,3 +512,200 @@ let _idCounter = 0;
 export function generateId(): string {
   return `cad_${Date.now()}_${++_idCounter}`;
 }
+
+// ---- Fillet ----
+
+/** Find the infinite-line intersection of two line segments (ignoring segment bounds). */
+function lineLineIntersection(
+  a1: Point2D, a2: Point2D,
+  b1: Point2D, b2: Point2D
+): Point2D | null {
+  const dx1 = a2.x - a1.x, dy1 = a2.y - a1.y;
+  const dx2 = b2.x - b1.x, dy2 = b2.y - b1.y;
+  const denom = dx1 * dy2 - dy1 * dx2;
+  if (Math.abs(denom) < 1e-10) return null; // parallel
+  const t = ((b1.x - a1.x) * dy2 - (b1.y - a1.y) * dx2) / denom;
+  return { x: a1.x + t * dx1, y: a1.y + t * dy1 };
+}
+
+/**
+ * Compute fillet between two line entities.
+ * Returns the modified lines (shortened) and an arc polyline,
+ * or null if a fillet can't be computed.
+ */
+export function computeFillet(
+  lineA: import("@/types/cad").LineEntity,
+  lineB: import("@/types/cad").LineEntity,
+  radius: number
+): { newEntities: import("@/types/cad").CadEntity[]; removedIds: string[] } | null {
+  // Find intersection of the two lines (extended infinitely)
+  const corner = lineLineIntersection(lineA.start, lineA.end, lineB.start, lineB.end);
+  if (!corner) return null; // parallel lines
+
+  // Determine which endpoint of each line is closest to the corner
+  const dAs = distance(lineA.start, corner);
+  const dAe = distance(lineA.end, corner);
+  const dBs = distance(lineB.start, corner);
+  const dBe = distance(lineB.end, corner);
+
+  // Direction vectors pointing away from corner
+  const aEndNear = dAe < dAs;
+  const aPt = aEndNear ? lineA.start : lineA.end; // far point
+  const bEndNear = dBe < dBs;
+  const bPt = bEndNear ? lineB.start : lineB.end; // far point
+
+  // Unit vectors from corner along each line
+  const lenA = distance(corner, aPt);
+  const lenB = distance(corner, bPt);
+  if (lenA < 0.01 || lenB < 0.01) return null;
+
+  const uA = { x: (aPt.x - corner.x) / lenA, y: (aPt.y - corner.y) / lenA };
+  const uB = { x: (bPt.x - corner.x) / lenB, y: (bPt.y - corner.y) / lenB };
+
+  // Half-angle between the two lines
+  const dot = uA.x * uB.x + uA.y * uB.y;
+  const halfAngle = Math.acos(Math.max(-1, Math.min(1, dot))) / 2;
+  if (Math.abs(Math.sin(halfAngle)) < 1e-10) return null; // lines are coincident
+
+  // Distance from corner to tangent points
+  const tangentDist = radius / Math.tan(halfAngle);
+  if (tangentDist > lenA * 0.99 || tangentDist > lenB * 0.99) return null; // radius too large
+
+  // Tangent points on each line
+  const tA = { x: corner.x + uA.x * tangentDist, y: corner.y + uA.y * tangentDist };
+  const tB = { x: corner.x + uB.x * tangentDist, y: corner.y + uB.y * tangentDist };
+
+  // Arc center: move from corner along bisector
+  const bisector = { x: uA.x + uB.x, y: uA.y + uB.y };
+  const bisLen = Math.sqrt(bisector.x ** 2 + bisector.y ** 2);
+  if (bisLen < 1e-10) return null;
+  const centerDist = radius / Math.sin(halfAngle);
+  const center = {
+    x: corner.x + (bisector.x / bisLen) * centerDist,
+    y: corner.y + (bisector.y / bisLen) * centerDist,
+  };
+
+  // Generate arc points from tA to tB around center
+  const startAngle = Math.atan2(tA.y - center.y, tA.x - center.x);
+  const endAngle = Math.atan2(tB.y - center.y, tB.x - center.x);
+
+  // Determine arc sweep direction (should be the short arc)
+  let sweep = endAngle - startAngle;
+  if (sweep > Math.PI) sweep -= 2 * Math.PI;
+  if (sweep < -Math.PI) sweep += 2 * Math.PI;
+
+  const numPts = Math.max(8, Math.round(Math.abs(sweep) / (Math.PI / 16)));
+  const arcPoints: Point2D[] = [];
+  for (let i = 0; i <= numPts; i++) {
+    const t = i / numPts;
+    const angle = startAngle + sweep * t;
+    arcPoints.push({
+      x: center.x + radius * Math.cos(angle),
+      y: center.y + radius * Math.sin(angle),
+    });
+  }
+
+  const base = { stroke: lineA.stroke, strokeWidth: lineA.strokeWidth, locked: false, thickness: 0 };
+
+  // Shortened line A: from far point to tangent point
+  const newLineA: import("@/types/cad").LineEntity = {
+    ...base,
+    id: generateId(),
+    type: "line",
+    start: aPt,
+    end: tA,
+    thickness: lineA.thickness,
+  };
+
+  // Shortened line B: from far point to tangent point
+  const newLineB: import("@/types/cad").LineEntity = {
+    ...base,
+    id: generateId(),
+    type: "line",
+    start: bPt,
+    end: tB,
+    thickness: lineB.thickness,
+  };
+
+  // Arc as a polyline
+  const arc: import("@/types/cad").PolylineEntity = {
+    ...base,
+    id: generateId(),
+    type: "polyline",
+    points: arcPoints,
+    closed: false,
+    thickness: 0,
+  };
+
+  return {
+    newEntities: [newLineA, arc, newLineB],
+    removedIds: [lineA.id, lineB.id],
+  };
+}
+
+/**
+ * Preview fillet: returns the arc points and tangent points for rendering.
+ */
+export function getFilletPreview(
+  lineA: import("@/types/cad").LineEntity,
+  lineB: import("@/types/cad").LineEntity,
+  radius: number
+): { arcPoints: Point2D[]; tangentA: Point2D; tangentB: Point2D; corner: Point2D } | null {
+  const corner = lineLineIntersection(lineA.start, lineA.end, lineB.start, lineB.end);
+  if (!corner) return null;
+
+  const dAs = distance(lineA.start, corner);
+  const dAe = distance(lineA.end, corner);
+  const dBs = distance(lineB.start, corner);
+  const dBe = distance(lineB.end, corner);
+
+  const aEndNear = dAe < dAs;
+  const aPt = aEndNear ? lineA.start : lineA.end;
+  const bEndNear = dBe < dBs;
+  const bPt = bEndNear ? lineB.start : lineB.end;
+
+  const lenA = distance(corner, aPt);
+  const lenB = distance(corner, bPt);
+  if (lenA < 0.01 || lenB < 0.01) return null;
+
+  const uA = { x: (aPt.x - corner.x) / lenA, y: (aPt.y - corner.y) / lenA };
+  const uB = { x: (bPt.x - corner.x) / lenB, y: (bPt.y - corner.y) / lenB };
+
+  const dot = uA.x * uB.x + uA.y * uB.y;
+  const halfAngle = Math.acos(Math.max(-1, Math.min(1, dot))) / 2;
+  if (Math.abs(Math.sin(halfAngle)) < 1e-10) return null;
+
+  const tangentDist = radius / Math.tan(halfAngle);
+  if (tangentDist > lenA * 0.99 || tangentDist > lenB * 0.99) return null;
+
+  const tA = { x: corner.x + uA.x * tangentDist, y: corner.y + uA.y * tangentDist };
+  const tB = { x: corner.x + uB.x * tangentDist, y: corner.y + uB.y * tangentDist };
+
+  const bisector = { x: uA.x + uB.x, y: uA.y + uB.y };
+  const bisLen = Math.sqrt(bisector.x ** 2 + bisector.y ** 2);
+  if (bisLen < 1e-10) return null;
+  const centerDist = radius / Math.sin(halfAngle);
+  const center = {
+    x: corner.x + (bisector.x / bisLen) * centerDist,
+    y: corner.y + (bisector.y / bisLen) * centerDist,
+  };
+
+  const startAngle = Math.atan2(tA.y - center.y, tA.x - center.x);
+  const endAngle = Math.atan2(tB.y - center.y, tB.x - center.x);
+  let sweep = endAngle - startAngle;
+  if (sweep > Math.PI) sweep -= 2 * Math.PI;
+  if (sweep < -Math.PI) sweep += 2 * Math.PI;
+
+  const numPts = Math.max(8, Math.round(Math.abs(sweep) / (Math.PI / 16)));
+  const arcPoints: Point2D[] = [];
+  for (let i = 0; i <= numPts; i++) {
+    const t = i / numPts;
+    const angle = startAngle + sweep * t;
+    arcPoints.push({
+      x: center.x + radius * Math.cos(angle),
+      y: center.y + radius * Math.sin(angle),
+    });
+  }
+
+  return { arcPoints, tangentA: tA, tangentB: tB, corner };
+}
