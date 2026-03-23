@@ -230,6 +230,23 @@ export function CadCanvas({ state, dispatch }: Props) {
       const world = screenToWorld(e.clientX, e.clientY);
       const pt = doSnap(world);
 
+      // Right-click on handle → toggle lock
+      if (e.button === 2) {
+        const handleTol = 0.2;
+        for (const selId of selectedIds) {
+          const selEntity = entities.find((ent) => ent.id === selId);
+          if (!selEntity) continue;
+          const handles = getHandlePositions(selEntity);
+          for (let hi = 0; hi < handles.length; hi++) {
+            if (distance(world, handles[hi]) < handleTol) {
+              dispatch({ type: "TOGGLE_HANDLE_LOCK", id: selId, handleIndex: hi });
+              return;
+            }
+          }
+        }
+        return;
+      }
+
       // Pan
       if (activeTool === "pan" || e.button === 1) {
         isPanning.current = true;
@@ -261,6 +278,8 @@ export function CadCanvas({ state, dispatch }: Props) {
           const handles = getHandlePositions(selEntity);
           for (let hi = 0; hi < handles.length; hi++) {
             if (distance(world, handles[hi]) < handleTol) {
+              // Don't resize locked handles
+              if (selEntity.lockedHandles?.includes(hi)) return;
               // Start resize drag
               isResizing.current = true;
               resizeEntityId.current = selId;
@@ -487,8 +506,22 @@ export function CadCanvas({ state, dispatch }: Props) {
     const scale = newVal / currentLen;
     const dx = entity.endPt.x - entity.startPt.x;
     const dy = entity.endPt.y - entity.startPt.y;
-    const newEnd = { x: entity.startPt.x + dx * scale, y: entity.startPt.y + dy * scale };
-    dispatch({ type: "UPDATE_ENTITY", id: entity.id, changes: { endPt: newEnd, labelOverride: null } as never });
+    const locked = entity.lockedHandles ?? [];
+    const startLocked = locked.includes(0);
+    const endLocked = locked.includes(1);
+
+    if (startLocked && endLocked) {
+      // Both locked — just override the label
+      dispatch({ type: "UPDATE_ENTITY", id: entity.id, changes: { labelOverride: editingDim.value } as never });
+    } else if (endLocked) {
+      // End is locked — move start
+      const newStart = { x: entity.endPt.x - dx * scale, y: entity.endPt.y - dy * scale };
+      dispatch({ type: "UPDATE_ENTITY", id: entity.id, changes: { startPt: newStart, labelOverride: null } as never });
+    } else {
+      // Default or start locked — move end
+      const newEnd = { x: entity.startPt.x + dx * scale, y: entity.startPt.y + dy * scale };
+      dispatch({ type: "UPDATE_ENTITY", id: entity.id, changes: { endPt: newEnd, labelOverride: null } as never });
+    }
     setEditingDim(null);
   }, [editingDim, entities, dispatch]);
 
@@ -557,6 +590,7 @@ export function CadCanvas({ state, dispatch }: Props) {
         onWheel={handleWheel}
         onDoubleClick={handleDoubleClick}
         onKeyDown={handleKeyDown}
+        onContextMenu={(e) => e.preventDefault()}
         tabIndex={0}
       >
         {/* Grid */}
@@ -660,7 +694,7 @@ export function CadCanvas({ state, dispatch }: Props) {
         {activeTool === "polyline" && drawState
           ? "Click to add points · Double-click to finish · C to close"
           : activeTool === "select"
-            ? "Click to select · Drag to move · Drag empty space for box select · F to zoom fit"
+            ? "Click to select · Drag to move · Drag handle to resize · Right-click handle to lock/unlock"
             : activeTool === "dimension"
               ? drawState ? "Click second point to place dimension" : "Click first point for dimension"
               : activeTool === "trim"

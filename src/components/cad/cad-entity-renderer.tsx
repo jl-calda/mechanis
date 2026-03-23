@@ -9,12 +9,30 @@ interface Props {
 }
 
 const SEL_COLOR = "var(--primary)";
+const LOCK_COLOR = "var(--danger)";
 const STROKE_W = 0.06;
 const SEL_STROKE_W = 0.08;
 const HANDLE_R = 0.12;
 
-function Handle({ x, y, index, entityId }: { x: number; y: number; index: number; entityId: string }) {
-  return (
+function Handle({ x, y, index, entityId, isLocked }: { x: number; y: number; index: number; entityId: string; isLocked: boolean }) {
+  return isLocked ? (
+    <g>
+      <rect
+        x={x - HANDLE_R}
+        y={y - HANDLE_R}
+        width={HANDLE_R * 2}
+        height={HANDLE_R * 2}
+        fill={LOCK_COLOR}
+        stroke="none"
+        data-handle-index={index}
+        data-handle-entity={entityId}
+        style={{ cursor: "not-allowed" }}
+      />
+      {/* Lock X indicator */}
+      <line x1={x - HANDLE_R * 0.5} y1={y - HANDLE_R * 0.5} x2={x + HANDLE_R * 0.5} y2={y + HANDLE_R * 0.5} stroke="white" strokeWidth={0.03} />
+      <line x1={x + HANDLE_R * 0.5} y1={y - HANDLE_R * 0.5} x2={x - HANDLE_R * 0.5} y2={y + HANDLE_R * 0.5} stroke="white" strokeWidth={0.03} />
+    </g>
+  ) : (
     <rect
       x={x - HANDLE_R}
       y={y - HANDLE_R}
@@ -32,6 +50,8 @@ function Handle({ x, y, index, entityId }: { x: number; y: number; index: number
 export function CadEntityRenderer({ entity, selected }: Props) {
   const stroke = selected ? SEL_COLOR : "var(--svg-stroke)";
   const sw = selected ? SEL_STROKE_W : STROKE_W;
+  const lh = entity.lockedHandles ?? [];
+  const isHL = (i: number) => lh.includes(i);
 
   switch (entity.type) {
     case "point":
@@ -72,8 +92,8 @@ export function CadEntityRenderer({ entity, selected }: Props) {
           />
           {selected && (
             <>
-              <Handle x={entity.start.x} y={entity.start.y} index={0} entityId={entity.id} />
-              <Handle x={entity.end.x} y={entity.end.y} index={1} entityId={entity.id} />
+              <Handle x={entity.start.x} y={entity.start.y} index={0} entityId={entity.id} isLocked={isHL(0)} />
+              <Handle x={entity.end.x} y={entity.end.y} index={1} entityId={entity.id} isLocked={isHL(1)} />
             </>
           )}
         </g>
@@ -94,10 +114,10 @@ export function CadEntityRenderer({ entity, selected }: Props) {
           />
           {selected && (
             <>
-              <Handle x={entity.origin.x} y={entity.origin.y} index={0} entityId={entity.id} />
-              <Handle x={entity.origin.x + entity.width} y={entity.origin.y} index={1} entityId={entity.id} />
-              <Handle x={entity.origin.x + entity.width} y={entity.origin.y + entity.height} index={2} entityId={entity.id} />
-              <Handle x={entity.origin.x} y={entity.origin.y + entity.height} index={3} entityId={entity.id} />
+              <Handle x={entity.origin.x} y={entity.origin.y} index={0} entityId={entity.id} isLocked={isHL(0)} />
+              <Handle x={entity.origin.x + entity.width} y={entity.origin.y} index={1} entityId={entity.id} isLocked={isHL(1)} />
+              <Handle x={entity.origin.x + entity.width} y={entity.origin.y + entity.height} index={2} entityId={entity.id} isLocked={isHL(2)} />
+              <Handle x={entity.origin.x} y={entity.origin.y + entity.height} index={3} entityId={entity.id} isLocked={isHL(3)} />
             </>
           )}
         </g>
@@ -120,7 +140,7 @@ export function CadEntityRenderer({ entity, selected }: Props) {
             opacity={entity.thickness > 0 ? 0.7 : 1}
           />
           {selected &&
-            entity.points.map((p, i) => <Handle key={i} x={p.x} y={p.y} index={i} entityId={entity.id} />)}
+            entity.points.map((p, i) => <Handle key={i} x={p.x} y={p.y} index={i} entityId={entity.id} isLocked={isHL(i)} />)}
         </g>
       );
     }
@@ -139,9 +159,9 @@ export function CadEntityRenderer({ entity, selected }: Props) {
           />
           {selected && (
             <>
-              <Handle x={entity.center.x} y={entity.center.y} index={0} entityId={entity.id} />
-              <Handle x={entity.center.x + entity.radius} y={entity.center.y} index={1} entityId={entity.id} />
-              <Handle x={entity.center.x} y={entity.center.y - entity.radius} index={2} entityId={entity.id} />
+              <Handle x={entity.center.x} y={entity.center.y} index={0} entityId={entity.id} isLocked={isHL(0)} />
+              <Handle x={entity.center.x + entity.radius} y={entity.center.y} index={1} entityId={entity.id} isLocked={isHL(1)} />
+              <Handle x={entity.center.x} y={entity.center.y - entity.radius} index={2} entityId={entity.id} isLocked={isHL(2)} />
             </>
           )}
         </g>
@@ -162,9 +182,9 @@ export function CadEntityRenderer({ entity, selected }: Props) {
           />
           {selected && (
             <>
-              <Handle x={entity.center.x} y={entity.center.y} index={0} entityId={entity.id} />
-              <Handle x={entity.center.x + entity.rx} y={entity.center.y} index={1} entityId={entity.id} />
-              <Handle x={entity.center.x} y={entity.center.y - entity.ry} index={2} entityId={entity.id} />
+              <Handle x={entity.center.x} y={entity.center.y} index={0} entityId={entity.id} isLocked={isHL(0)} />
+              <Handle x={entity.center.x + entity.rx} y={entity.center.y} index={1} entityId={entity.id} isLocked={isHL(1)} />
+              <Handle x={entity.center.x} y={entity.center.y - entity.ry} index={2} entityId={entity.id} isLocked={isHL(2)} />
             </>
           )}
         </g>
@@ -272,8 +292,8 @@ export function CadEntityRenderer({ entity, selected }: Props) {
 
           {selected && (
             <>
-              <Handle x={startPt.x} y={startPt.y} index={0} entityId={entity.id} />
-              <Handle x={endPt.x} y={endPt.y} index={1} entityId={entity.id} />
+              <Handle x={startPt.x} y={startPt.y} index={0} entityId={entity.id} isLocked={isHL(0)} />
+              <Handle x={endPt.x} y={endPt.y} index={1} entityId={entity.id} isLocked={isHL(1)} />
             </>
           )}
         </g>

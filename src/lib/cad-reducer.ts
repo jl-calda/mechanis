@@ -26,6 +26,7 @@ export type CadAction =
   | { type: "CLEAR_REGIONS" }
   | { type: "MOVE_ENTITIES"; ids: string[]; dx: number; dy: number }
   | { type: "RESIZE_HANDLE"; id: string; handleIndex: number; newPos: Point2D }
+  | { type: "TOGGLE_HANDLE_LOCK"; id: string; handleIndex: number }
   | { type: "REPLACE_ENTITY"; id: string; newEntities: CadEntity[] }
   | { type: "ZOOM_TO_FIT"; canvasWidth: number; canvasHeight: number }
   | { type: "UNDO" }
@@ -140,8 +141,24 @@ export function cadReducer(state: CadState, action: CadAction): CadState {
     case "CLEAR_REGIONS":
       return { ...state, regions: [] };
 
+    case "TOGGLE_HANDLE_LOCK": {
+      const newEntities = state.entities.map((e) => {
+        if (e.id !== action.id) return e;
+        const current = e.lockedHandles ?? [];
+        const has = current.includes(action.handleIndex);
+        const lockedHandles = has
+          ? current.filter((i) => i !== action.handleIndex)
+          : [...current, action.handleIndex];
+        return { ...e, lockedHandles } as CadEntity;
+      });
+      return pushHistory(state, newEntities);
+    }
+
     case "RESIZE_HANDLE": {
       const { id, handleIndex, newPos } = action;
+      // Block if handle is locked
+      const target = state.entities.find((e) => e.id === id);
+      if (target?.lockedHandles?.includes(handleIndex)) return state;
       const newEntities = state.entities.map((e) => {
         if (e.id !== id) return e;
         switch (e.type) {

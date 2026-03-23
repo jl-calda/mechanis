@@ -24,6 +24,7 @@ interface CadEntityBase {
   stroke: string;
   strokeWidth: number;
   locked: boolean;
+  lockedHandles?: number[]; // indices of handles that are pinned in place
 }
 
 export interface PointEntity extends CadEntityBase {
