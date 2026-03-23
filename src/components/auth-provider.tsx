@@ -27,6 +27,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const supabase = createClient();
 
+    // Handle OAuth code redirect (Supabase may redirect to /?code=... instead of /auth/callback)
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    if (code) {
+      supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
+        // Clean the URL regardless of result
+        window.history.replaceState({}, "", window.location.pathname);
+        if (error) {
+          window.location.href = "/login?error=auth";
+        }
+      });
+    }
+
     supabase.auth.getUser().then(({ data }) => {
       setUser(data.user);
       setLoading(false);
