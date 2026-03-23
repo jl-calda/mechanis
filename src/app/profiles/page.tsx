@@ -85,7 +85,7 @@ function ProfilesPageInner() {
 
   return (
     <div className="pt-8 md:pt-4">
-      <div className="mb-5 flex items-start justify-between">
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-lg font-medium tracking-tight text-foreground">
             Section Builder

@@ -80,14 +80,15 @@ export function CadToolbar({
   onZoomToFit,
   horizontal = false,
 }: Props) {
-  const size = horizontal ? "h-7 w-7" : "h-8 w-8";
-  const iconSize = horizontal ? 13 : 15;
+  // Larger touch targets on horizontal (mobile) mode
+  const size = horizontal ? "h-9 w-9 min-w-[36px]" : "h-8 w-8";
+  const iconSize = horizontal ? 15 : 15;
   const sep = horizontal
-    ? "mx-0.5 w-px h-5 bg-border self-center"
+    ? "mx-0.5 w-px h-6 bg-border self-center flex-shrink-0"
     : "my-1 h-px bg-border";
 
   const wrapperClass = horizontal
-    ? "flex items-center gap-0.5 rounded-lg border border-border bg-surface p-1 overflow-x-auto"
+    ? "flex items-center gap-0.5 rounded-lg border border-border bg-surface p-1 overflow-x-auto scrollbar-none -webkit-overflow-scrolling-touch"
     : "flex flex-col gap-1 rounded-lg border border-border bg-surface p-1.5";
 
   return (
@@ -97,8 +98,9 @@ export function CadToolbar({
         <button
           key={tool}
           onClick={() => onSetTool(tool)}
-          className={`${btnBase} ${size} ${activeTool === tool ? btnActive : btnInactive}`}
+          className={`${btnBase} ${size} flex-shrink-0 ${activeTool === tool ? btnActive : btnInactive}`}
           title={label}
+          aria-label={label}
         >
           <Icon size={iconSize} />
         </button>
@@ -109,15 +111,17 @@ export function CadToolbar({
       {/* Grid & Snap */}
       <button
         onClick={onToggleGrid}
-        className={`${btnBase} ${size} ${gridVisible ? btnActive : btnInactive}`}
+        className={`${btnBase} ${size} flex-shrink-0 ${gridVisible ? btnActive : btnInactive}`}
         title="Toggle Grid"
+        aria-label="Toggle Grid"
       >
         <Grid3x3 size={iconSize} />
       </button>
       <button
         onClick={onToggleSnap}
-        className={`${btnBase} ${size} ${snapEnabled ? btnActive : btnInactive}`}
+        className={`${btnBase} ${size} flex-shrink-0 ${snapEnabled ? btnActive : btnInactive}`}
         title="Snap to Grid"
+        aria-label="Snap to Grid"
       >
         <Magnet size={iconSize} />
       </button>
@@ -128,16 +132,18 @@ export function CadToolbar({
       <button
         onClick={onUndo}
         disabled={!canUndo}
-        className={`${btnBase} ${size} ${canUndo ? btnInactive : "text-muted/30 cursor-not-allowed"}`}
+        className={`${btnBase} ${size} flex-shrink-0 ${canUndo ? btnInactive : "text-muted/30 cursor-not-allowed"}`}
         title="Undo"
+        aria-label="Undo"
       >
         <Undo2 size={iconSize} />
       </button>
       <button
         onClick={onRedo}
         disabled={!canRedo}
-        className={`${btnBase} ${size} ${canRedo ? btnInactive : "text-muted/30 cursor-not-allowed"}`}
+        className={`${btnBase} ${size} flex-shrink-0 ${canRedo ? btnInactive : "text-muted/30 cursor-not-allowed"}`}
         title="Redo"
+        aria-label="Redo"
       >
         <Redo2 size={iconSize} />
       </button>
@@ -148,8 +154,9 @@ export function CadToolbar({
       {hasSelection && (
         <button
           onClick={onDeleteSelected}
-          className={`${btnBase} ${size} text-danger hover:bg-danger/10`}
+          className={`${btnBase} ${size} flex-shrink-0 text-danger hover:bg-danger/10`}
           title="Delete Selected"
+          aria-label="Delete Selected"
         >
           <Trash2 size={iconSize} />
         </button>
@@ -158,8 +165,9 @@ export function CadToolbar({
       {/* Zoom to Fit */}
       <button
         onClick={onZoomToFit}
-        className={`${btnBase} ${size} ${btnInactive}`}
+        className={`${btnBase} ${size} flex-shrink-0 ${btnInactive}`}
         title="Zoom to Fit"
+        aria-label="Zoom to Fit"
       >
         <Maximize2 size={iconSize} />
       </button>
@@ -167,8 +175,9 @@ export function CadToolbar({
       {/* Analyze */}
       <button
         onClick={onAnalyze}
-        className={`${btnBase} ${size} text-primary hover:bg-primary/10`}
+        className={`${btnBase} ${size} flex-shrink-0 text-primary hover:bg-primary/10`}
         title="Detect Regions & Analyze"
+        aria-label="Detect Regions & Analyze"
       >
         <Sparkles size={iconSize} />
       </button>

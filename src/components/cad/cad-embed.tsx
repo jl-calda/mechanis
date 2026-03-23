@@ -62,18 +62,19 @@ export function CadEmbed({ defaultTab, onStateChange, initialState }: Props) {
             dispatch({ type: "DELETE_ENTITIES", ids: state.selectedIds })
           }
           onZoomToFit={() => {
+            const el = document.querySelector<HTMLElement>(".cad-embed-canvas");
             dispatch({
               type: "ZOOM_TO_FIT",
-              canvasWidth: 600,
-              canvasHeight: 400,
+              canvasWidth: el?.clientWidth ?? 600,
+              canvasHeight: el?.clientHeight ?? 400,
             });
           }}
           horizontal
         />
       </div>
 
-      {/* Canvas */}
-      <div className="h-80 md:h-96">
+      {/* Canvas — taller on mobile for usable touch area */}
+      <div className="cad-embed-canvas h-[60vh] min-h-[280px] max-h-[500px] md:h-96">
         <CadCanvas state={state} dispatch={dispatch} />
       </div>
 

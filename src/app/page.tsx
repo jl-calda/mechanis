@@ -85,14 +85,14 @@ function FavoriteSections() {
           View all <ArrowRight size={11} />
         </Link>
       </div>
-      <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none sm:grid sm:grid-cols-2 sm:overflow-visible md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {favorites.slice(0, 10).map((fav) => {
           const profile = profiles.find((p) => p.designation === fav.designation);
           return (
             <Link
               key={fav.id}
               href={`/profiles?d=${encodeURIComponent(fav.designation)}`}
-              className="group flex flex-col items-center rounded-lg border border-border bg-surface p-3 transition-all hover:border-[#333] hover:bg-surface-alt"
+              className="group flex flex-col items-center rounded-lg border border-border bg-surface p-3 transition-all hover:border-[#333] hover:bg-surface-alt min-w-[140px] sm:min-w-0"
             >
               {profile ? (
                 <div className="h-24 w-full flex items-center justify-center">

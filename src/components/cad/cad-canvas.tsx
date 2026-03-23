@@ -114,6 +114,10 @@ export function CadCanvas({ state, dispatch }: Props) {
   const isPanning = useRef(false);
   const panStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
 
+  // Touch gesture state (pinch-zoom + two-finger pan)
+  const activeTouches = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchState = useRef<{ dist: number; midX: number; midY: number; zoom: number; panX: number; panY: number } | null>(null);
+
   // Drag-to-move state
   const isDragging = useRef(false);
   const dragStart = useRef<Point2D>({ x: 0, y: 0 });
@@ -327,6 +331,8 @@ export function CadCanvas({ state, dispatch }: Props) {
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (editingDim) return;
+      // Ignore pointer events during multi-touch pinch gesture
+      if (activeTouches.current.size >= 2) return;
 
       const world = screenToWorld(e.clientX, e.clientY);
       const { pt } = doSnap(world);
@@ -661,6 +667,8 @@ export function CadCanvas({ state, dispatch }: Props) {
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
+      // Ignore pointer events during multi-touch pinch gesture
+      if (activeTouches.current.size >= 2) return;
       const world = screenToWorld(e.clientX, e.clientY);
       const noSnap = activeTool === "trim" || activeTool === "fillet" || activeTool === "offset" || activeTool === "region-pick";
       const snapResult = noSnap ? { pt: world, type: null as "grid" | "node" | null } : doSnap(world);
@@ -851,6 +859,92 @@ export function CadCanvas({ state, dispatch }: Props) {
     };
     svg.addEventListener("wheel", handler, { passive: false });
     return () => svg.removeEventListener("wheel", handler);
+  }, []);
+
+  // Touch gesture handlers for pinch-zoom and two-finger pan
+  const viewportRef = useRef(viewport);
+  viewportRef.current = viewport;
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+
+    function handleTouchStart(e: TouchEvent) {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        activeTouches.current.set(t.identifier, { x: t.clientX, y: t.clientY });
+      }
+      if (activeTouches.current.size === 2) {
+        e.preventDefault();
+        const pts = Array.from(activeTouches.current.values());
+        const dx = pts[1].x - pts[0].x;
+        const dy = pts[1].y - pts[0].y;
+        pinchState.current = {
+          dist: Math.sqrt(dx * dx + dy * dy),
+          midX: (pts[0].x + pts[1].x) / 2,
+          midY: (pts[0].y + pts[1].y) / 2,
+          zoom: viewportRef.current.zoom,
+          panX: viewportRef.current.panX,
+          panY: viewportRef.current.panY,
+        };
+      }
+    }
+
+    function handleTouchMove(e: TouchEvent) {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        activeTouches.current.set(t.identifier, { x: t.clientX, y: t.clientY });
+      }
+      if (activeTouches.current.size >= 2 && pinchState.current) {
+        e.preventDefault();
+        const pts = Array.from(activeTouches.current.values());
+        const dx = pts[1].x - pts[0].x;
+        const dy = pts[1].y - pts[0].y;
+        const newDist = Math.sqrt(dx * dx + dy * dy);
+        const newMidX = (pts[0].x + pts[1].x) / 2;
+        const newMidY = (pts[0].y + pts[1].y) / 2;
+
+        const scale = newDist / pinchState.current.dist;
+        const newZoom = Math.max(1, Math.min(500, pinchState.current.zoom * scale));
+
+        // Pan: track the midpoint movement
+        const panDx = newMidX - pinchState.current.midX;
+        const panDy = newMidY - pinchState.current.midY;
+
+        // Zoom toward pinch center
+        const rect = svg!.getBoundingClientRect();
+        const cx = pinchState.current.midX - rect.left;
+        const cy = pinchState.current.midY - rect.top;
+        const zoomRatio = newZoom / pinchState.current.zoom;
+        const newPanX = cx - (cx - pinchState.current.panX) * zoomRatio + panDx;
+        const newPanY = cy - (cy - pinchState.current.panY) * zoomRatio + panDy;
+
+        wheelDispatchRef.current({
+          type: "SET_VIEWPORT",
+          viewport: { zoom: newZoom, panX: newPanX, panY: newPanY },
+        });
+      }
+    }
+
+    function handleTouchEnd(e: TouchEvent) {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        activeTouches.current.delete(e.changedTouches[i].identifier);
+      }
+      if (activeTouches.current.size < 2) {
+        pinchState.current = null;
+      }
+    }
+
+    svg.addEventListener("touchstart", handleTouchStart, { passive: false });
+    svg.addEventListener("touchmove", handleTouchMove, { passive: false });
+    svg.addEventListener("touchend", handleTouchEnd);
+    svg.addEventListener("touchcancel", handleTouchEnd);
+    return () => {
+      svg.removeEventListener("touchstart", handleTouchStart);
+      svg.removeEventListener("touchmove", handleTouchMove);
+      svg.removeEventListener("touchend", handleTouchEnd);
+      svg.removeEventListener("touchcancel", handleTouchEnd);
+    };
   }, []);
 
   const handleDoubleClick = useCallback(
@@ -1122,7 +1216,7 @@ export function CadCanvas({ state, dispatch }: Props) {
         ref={svgRef}
         className="h-full w-full"
         viewBox={`${viewX} ${viewY} ${viewW} ${viewH}`}
-        style={{ cursor: cursorStyle }}
+        style={{ cursor: cursorStyle, touchAction: "none" }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}

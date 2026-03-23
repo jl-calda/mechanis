@@ -39,7 +39,7 @@ export function Sidebar() {
       {/* Mobile toggle */}
       <button
         onClick={() => setOpen(!open)}
-        className="fixed top-4 left-4 z-50 rounded-md bg-surface p-2 text-foreground md:hidden no-print"
+        className="fixed top-3 left-3 z-50 flex h-10 w-10 items-center justify-center rounded-md bg-surface border border-border text-foreground shadow-sm md:hidden no-print"
         aria-label="Toggle navigation"
       >
         {open ? <X size={18} /> : <Menu size={18} />}
