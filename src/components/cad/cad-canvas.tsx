@@ -3,7 +3,7 @@
 import { useRef, useCallback, useState, useMemo, useEffect } from "react";
 import type { CadState, Point2D, CadEntity } from "@/types/cad";
 import type { CadAction } from "@/lib/cad-reducer";
-import { snapToGrid, generateId, distance, midpoint, pointNearSegment, pointNearCircle, pointNearEllipse, getEntitySnapPoints, getEntityBounds, trimEntityAtPoint, getTrimPreview, getEntitySegments, hitTestEdge, computeFilletFromEdges, getFilletPreviewFromEdges, arcToPoints } from "@/lib/cad/geometry";
+import { snapToGrid, generateId, distance, midpoint, pointNearSegment, pointNearCircle, pointNearEllipse, getEntitySnapPoints, getEntityBounds, trimEntityAtPoint, getTrimPreview, getEntitySegments, hitTestEdge, computeFilletFromEdges, getFilletPreviewFromEdges, arcToPoints, pointInPolygon } from "@/lib/cad/geometry";
 import type { FilletEdge } from "@/lib/cad/geometry";
 import { manualPickRegion } from "@/lib/cad/region-detect";
 import { CadGrid } from "./cad-grid";
@@ -433,10 +433,23 @@ export function CadCanvas({ state, dispatch }: Props) {
         return;
       }
 
-      // Region pick
+      // Region pick — right-click or click existing region toggles sign
       if (activeTool === "region-pick") {
-        const region = manualPickRegion(world, entities);
-        if (region) dispatch({ type: "ADD_REGION", region });
+        // Check if clicking inside an existing region — toggle its sign
+        let smallest: { id: string; area: number } | null = null;
+        for (const r of regions) {
+          if (pointInPolygon(world, r.boundary)) {
+            if (!smallest || r.area < smallest.area) {
+              smallest = { id: r.id, area: r.area };
+            }
+          }
+        }
+        if (smallest) {
+          dispatch({ type: "TOGGLE_REGION_SIGN", id: smallest.id });
+        } else {
+          const region = manualPickRegion(world, entities);
+          if (region) dispatch({ type: "ADD_REGION", region });
+        }
         return;
       }
 
@@ -610,7 +623,7 @@ export function CadCanvas({ state, dispatch }: Props) {
         return;
       }
     },
-    [activeTool, drawState, screenToWorld, doSnap, hitTest, dispatch, entities, viewport, selectedIds, editingDim, filletFirstEdge, filletRadius, showTooltipInput, dimMode]
+    [activeTool, drawState, screenToWorld, doSnap, hitTest, dispatch, entities, viewport, selectedIds, editingDim, filletFirstEdge, filletRadius, showTooltipInput, dimMode, regions]
   );
 
   const handlePointerMove = useCallback(
@@ -1416,7 +1429,7 @@ export function CadCanvas({ state, dispatch }: Props) {
                 : activeTool === "fillet"
                   ? !filletFirstEdge ? `Click first edge · Tab to set r=${filletRadius}` : "Click second edge to fillet"
                   : activeTool === "region-pick"
-                    ? "Click inside a closed shape"
+                    ? "Click shape to add region · Click region to toggle +/−"
                     : activeTool === "line"
                       ? !drawState ? "Click to start · Esc to cancel" : "Click or type length · Tab for length,angle"
                       : activeTool === "rectangle"
