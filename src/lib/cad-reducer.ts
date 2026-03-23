@@ -268,8 +268,13 @@ export function cadReducer(state: CadState, action: CadAction): CadState {
     }
 
     case "ZOOM_TO_FIT": {
-      if (state.entities.length === 0) return state;
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      if (state.entities.length === 0) {
+        // No entities: center on origin
+        const { canvasWidth: cw, canvasHeight: ch } = action;
+        return { ...state, viewport: { panX: cw / 2, panY: ch / 2, zoom: 40 } };
+      }
+      // Include origin in bounding box
+      let minX = 0, minY = 0, maxX = 0, maxY = 0;
       for (const e of state.entities) {
         const b = getEntityBounds(e);
         if (!b) continue;
@@ -278,7 +283,6 @@ export function cadReducer(state: CadState, action: CadAction): CadState {
         maxX = Math.max(maxX, b.maxX);
         maxY = Math.max(maxY, b.maxY);
       }
-      if (!isFinite(minX)) return state;
       const pad = 2; // world units padding
       const bw = maxX - minX + pad * 2;
       const bh = maxY - minY + pad * 2;

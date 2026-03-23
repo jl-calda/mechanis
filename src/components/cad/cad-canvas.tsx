@@ -108,6 +108,25 @@ export function CadCanvas({ state, dispatch }: Props) {
 
   const { viewport, grid, entities, selectedIds, activeTool, drawState, regions } = state;
 
+  // Center origin on mount
+  const hasInitialized = useRef(false);
+  useEffect(() => {
+    if (!hasInitialized.current) {
+      const svg = svgRef.current;
+      if (svg && svg.clientWidth > 0) {
+        hasInitialized.current = true;
+        dispatch({
+          type: "SET_VIEWPORT",
+          viewport: {
+            panX: svg.clientWidth / 2,
+            panY: svg.clientHeight / 2,
+            zoom: 40,
+          },
+        });
+      }
+    }
+  }, [dispatch]);
+
   // Auto zoom-to-fit on first entity added
   const prevCount = useRef(0);
   useEffect(() => {
