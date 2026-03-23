@@ -31,3 +31,28 @@ create policy "Users can update own projects"
 create policy "Users can delete own projects"
   on public.projects for delete
   using (auth.uid() = user_id);
+
+-- Favorites table (saved/starred sections)
+create table if not exists public.favorites (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  designation text not null,
+  profile_type text not null,
+  standard text not null check (standard in ('AISC', 'EN')),
+  created_at timestamptz default now() not null,
+  unique(user_id, designation)
+);
+
+alter table public.favorites enable row level security;
+
+create policy "Users can view own favorites"
+  on public.favorites for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert own favorites"
+  on public.favorites for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can delete own favorites"
+  on public.favorites for delete
+  using (auth.uid() = user_id);

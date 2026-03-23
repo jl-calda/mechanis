@@ -1,8 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { Ruler, CircleDot, Zap, Database, PenTool } from "lucide-react";
+import { Ruler, CircleDot, Zap, Database, PenTool, Star, ArrowRight } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
+import { useEffect, useState } from "react";
+import { getFavorites, type Favorite } from "@/lib/supabase/favorites";
+import { profiles } from "@/data/profiles";
+import { ProfileSvg } from "@/components/profiles/profile-svg";
 
 const tools = [
   {
@@ -47,6 +51,72 @@ const tools = [
   },
 ];
 
+function FavoriteSections() {
+  const { user } = useAuth();
+  const [favorites, setFavorites] = useState<Favorite[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+    getFavorites().then((favs) => {
+      setFavorites(favs);
+      setLoading(false);
+    });
+  }, [user]);
+
+  if (!user || loading || favorites.length === 0) return null;
+
+  return (
+    <div className="mb-6">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Star size={13} className="text-amber-400" fill="currentColor" />
+          <h2 className="text-xs font-medium text-muted uppercase tracking-wider">
+            Saved Sections
+          </h2>
+        </div>
+        <Link
+          href="/profiles"
+          className="flex items-center gap-1 text-[11px] text-muted hover:text-primary transition-colors"
+        >
+          View all <ArrowRight size={11} />
+        </Link>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        {favorites.slice(0, 10).map((fav) => {
+          const profile = profiles.find((p) => p.designation === fav.designation);
+          return (
+            <Link
+              key={fav.id}
+              href={`/profiles?d=${encodeURIComponent(fav.designation)}`}
+              className="group flex flex-col items-center rounded-lg border border-border bg-surface p-3 transition-all hover:border-[#333] hover:bg-surface-alt"
+            >
+              {profile ? (
+                <div className="h-24 w-full flex items-center justify-center">
+                  <ProfileSvg profile={profile} width={160} height={96} />
+                </div>
+              ) : (
+                <div className="h-24 w-full flex items-center justify-center">
+                  <Ruler size={20} className="text-muted/40" />
+                </div>
+              )}
+              <span className="mt-1.5 text-[11px] font-mono font-medium text-foreground group-hover:text-primary truncate max-w-full">
+                {fav.designation}
+              </span>
+              <span className="text-[10px] text-muted/60">
+                {fav.standard === "EN" ? "EN" : "AISC"} {fav.profileType}
+              </span>
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const { user } = useAuth();
 
@@ -60,6 +130,8 @@ export default function Home() {
           Structural engineering tools for steel design per AISC 360.
         </p>
       </div>
+
+      <FavoriteSections />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {tools.map((tool) => {

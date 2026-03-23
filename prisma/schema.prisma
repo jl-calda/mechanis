@@ -19,3 +19,15 @@ model Project {
   @@unique([userId, name])
   @@map("projects")
 }
+
+model Favorite {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  designation String   // e.g. "W14x30", "SHS 100×100×5"
+  profileType String   @map("profile_type") // e.g. "W", "SHS", "CHS"
+  standard    String   // "AISC" | "EN"
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, designation])
+  @@map("favorites")
+}

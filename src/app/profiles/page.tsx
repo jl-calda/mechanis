@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { Suspense, useState, useMemo, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
+import { Star } from "lucide-react";
 import type { ProfileType, ProfileStandard } from "@/types/profile";
 import { profiles } from "@/data/profiles";
 import { ProfileForm } from "@/components/profiles/profile-form";
@@ -8,19 +10,78 @@ import { ProfileSvg } from "@/components/profiles/profile-svg";
 import { ProfileViewer } from "@/components/profiles/profile-viewer";
 import { CadEmbed } from "@/components/cad/cad-embed";
 import { ProjectActions } from "@/components/project-actions";
+import { useAuth } from "@/components/auth-provider";
+import { getFavorites, addFavorite, removeFavorite, type Favorite } from "@/lib/supabase/favorites";
 
 type Mode = "standard" | "custom";
 
 export default function ProfilesPage() {
+  return (
+    <Suspense>
+      <ProfilesPageInner />
+    </Suspense>
+  );
+}
+
+function ProfilesPageInner() {
+  const { user } = useAuth();
+  const searchParams = useSearchParams();
   const [mode, setMode] = useState<Mode>("standard");
   const [selectedStandard, setSelectedStandard] = useState<ProfileStandard>("AISC");
   const [selectedType, setSelectedType] = useState<ProfileType>("W");
   const [selectedDesignation, setSelectedDesignation] = useState("W14x30");
+  const [favorites, setFavorites] = useState<Favorite[]>([]);
+  const [favLoading, setFavLoading] = useState(false);
+
+  // Handle ?d= query param (e.g. from dashboard favorite cards)
+  useEffect(() => {
+    const d = searchParams.get("d");
+    if (!d) return;
+    const p = profiles.find((pr) => pr.designation === d);
+    if (p) {
+      setSelectedDesignation(p.designation);
+      setSelectedType(p.type);
+      setSelectedStandard(p.standard ?? "AISC");
+      setMode("standard");
+    }
+  }, [searchParams]);
 
   const profile = useMemo(
     () => profiles.find((p) => p.designation === selectedDesignation),
     [selectedDesignation]
   );
+
+  // Load favorites on mount
+  useEffect(() => {
+    if (!user) return;
+    getFavorites().then(setFavorites);
+  }, [user]);
+
+  const isFavorited = useMemo(
+    () => favorites.some((f) => f.designation === selectedDesignation),
+    [favorites, selectedDesignation]
+  );
+
+  const toggleFavorite = useCallback(async () => {
+    if (!profile || favLoading) return;
+    setFavLoading(true);
+    try {
+      const existing = favorites.find((f) => f.designation === profile.designation);
+      if (existing) {
+        await removeFavorite(existing.id);
+        setFavorites((prev) => prev.filter((f) => f.id !== existing.id));
+      } else {
+        const fav = await addFavorite(
+          profile.designation,
+          profile.type,
+          profile.standard ?? "AISC"
+        );
+        if (fav) setFavorites((prev) => [fav, ...prev]);
+      }
+    } finally {
+      setFavLoading(false);
+    }
+  }, [profile, favorites, favLoading]);
 
   return (
     <div className="pt-8 md:pt-4">
@@ -80,7 +141,7 @@ export default function ProfilesPage() {
               onDesignationChange={setSelectedDesignation}
             />
           </div>
-          <div className="flex items-center justify-center rounded-lg border border-border bg-surface p-6">
+          <div className="flex items-center justify-center rounded-lg border border-border bg-surface p-6 relative">
             {profile ? (
               <div className="w-full max-w-md">
                 <div className="mb-2 text-center">
@@ -98,6 +159,21 @@ export default function ProfilesPage() {
             ) : (
               <p className="text-xs text-muted">Select a profile to view.</p>
             )}
+            {/* Favorite button */}
+            {user && profile && (
+              <button
+                onClick={toggleFavorite}
+                disabled={favLoading}
+                title={isFavorited ? "Remove from favorites" : "Add to favorites"}
+                className={`absolute top-3 right-3 p-1.5 rounded-md border transition-colors ${
+                  isFavorited
+                    ? "border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
+                    : "border-border bg-surface-alt text-muted hover:text-foreground hover:border-[#333]"
+                } ${favLoading ? "opacity-50 cursor-not-allowed" : ""}`}
+              >
+                <Star size={14} fill={isFavorited ? "currentColor" : "none"} />
+              </button>
+            )}
           </div>
           {profile && <ProfileViewer profile={profile} />}
         </div>
@@ -105,7 +181,7 @@ export default function ProfilesPage() {
         <div>
           <div className="mb-3 rounded-md bg-primary/5 border border-primary/20 px-3 py-2 text-xs text-muted">
             Draw a custom cross-section. Use closed shapes (rectangle, circle, polyline with C to close) then click Analyze to compute section properties.
-            Toggle regions +/− to add or subtract areas.
+            Toggle regions +/- to add or subtract areas.
           </div>
           <CadEmbed defaultTab="section" />
         </div>
