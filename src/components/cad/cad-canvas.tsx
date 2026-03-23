@@ -82,6 +82,7 @@ export function CadCanvas({ state, dispatch }: Props) {
   const [trimHover, setTrimHover] = useState<{
     entityId: string;
     removedSegment: [Point2D, Point2D];
+    removedArc?: { center: Point2D; radius: number; startAngle: number; endAngle: number };
   } | null>(null);
 
   // Fillet state
@@ -930,17 +931,33 @@ export function CadCanvas({ state, dispatch }: Props) {
 
         {/* Trim preview — show segment that would be removed */}
         {activeTool === "trim" && trimHover && (
-          <line
-            x1={trimHover.removedSegment[0].x}
-            y1={trimHover.removedSegment[0].y}
-            x2={trimHover.removedSegment[1].x}
-            y2={trimHover.removedSegment[1].y}
-            stroke="var(--danger)"
-            strokeWidth={0.18}
-            strokeLinecap="round"
-            strokeDasharray="0.15 0.1"
-            opacity={0.7}
-          />
+          trimHover.removedArc ? (() => {
+            const { center, radius, startAngle, endAngle } = trimHover.removedArc;
+            const pts = arcToPoints(center, radius, startAngle, endAngle, 32);
+            return (
+              <polyline
+                points={pts.map(p => `${p.x},${p.y}`).join(" ")}
+                fill="none"
+                stroke="var(--danger)"
+                strokeWidth={0.18}
+                strokeLinecap="round"
+                strokeDasharray="0.15 0.1"
+                opacity={0.7}
+              />
+            );
+          })() : (
+            <line
+              x1={trimHover.removedSegment[0].x}
+              y1={trimHover.removedSegment[0].y}
+              x2={trimHover.removedSegment[1].x}
+              y2={trimHover.removedSegment[1].y}
+              stroke="var(--danger)"
+              strokeWidth={0.18}
+              strokeLinecap="round"
+              strokeDasharray="0.15 0.1"
+              opacity={0.7}
+            />
+          )
         )}
 
         {/* Fillet preview — show arc that would be created */}

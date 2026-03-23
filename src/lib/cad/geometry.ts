@@ -139,6 +139,32 @@ export function segmentIntersection(
   return { x: a1.x + t * dx1, y: a1.y + t * dy1 };
 }
 
+/**
+ * Segment-circle intersection. Returns 0, 1, or 2 intersection points.
+ */
+function segmentCircleIntersection(
+  p1: Point2D, p2: Point2D,
+  center: Point2D, radius: number
+): Point2D[] {
+  const dx = p2.x - p1.x, dy = p2.y - p1.y;
+  const fx = p1.x - center.x, fy = p1.y - center.y;
+  const a = dx * dx + dy * dy;
+  if (a < 1e-12) return [];
+  const b = 2 * (fx * dx + fy * dy);
+  const c = fx * fx + fy * fy - radius * radius;
+  let disc = b * b - 4 * a * c;
+  if (disc < 0) return [];
+  disc = Math.sqrt(disc);
+  const results: Point2D[] = [];
+  for (const sign of [-1, 1]) {
+    const t = (-b + sign * disc) / (2 * a);
+    if (t > 1e-6 && t < 1 - 1e-6) {
+      results.push({ x: p1.x + t * dx, y: p1.y + t * dy });
+    }
+  }
+  return results;
+}
+
 /** Get all line segments from an entity */
 export function getEntitySegments(e: import("@/types/cad").CadEntity): [Point2D, Point2D][] {
   switch (e.type) {
@@ -235,6 +261,15 @@ function findTrimBoundaries(
     for (const otherSeg of otherSegs) {
       const ip = segmentIntersection(segStart, segEnd, otherSeg[0], otherSeg[1]);
       if (ip) {
+        const t = ((ip.x - segStart.x) * dx + (ip.y - segStart.y) * dy) / lenSq;
+        addPoint(ip, t);
+      }
+    }
+
+    // Check segment-circle/ellipse intersections
+    if (other.type === "circle") {
+      const pts = segmentCircleIntersection(segStart, segEnd, other.center, other.radius);
+      for (const ip of pts) {
         const t = ((ip.x - segStart.x) * dx + (ip.y - segStart.y) * dy) / lenSq;
         addPoint(ip, t);
       }
@@ -342,7 +377,122 @@ export function trimLineAtPoint(
 }
 
 /**
- * Trim any entity that has segments (line, rectangle, polyline).
+ * Find all angles where other entities intersect a circle.
+ * Returns sorted array of angles in [-PI, PI].
+ */
+function findCircleTrimAngles(
+  circle: import("@/types/cad").CircleEntity,
+  allEntities: import("@/types/cad").CadEntity[]
+): number[] {
+  const seen = new Set<string>();
+  const angles: number[] = [];
+  const addAngle = (pt: Point2D) => {
+    const key = `${pt.x.toFixed(6)},${pt.y.toFixed(6)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    angles.push(Math.atan2(pt.y - circle.center.y, pt.x - circle.center.x));
+  };
+
+  for (const other of allEntities) {
+    if (other.id === circle.id) continue;
+
+    // Segment-circle intersections
+    const segs = getEntitySegments(other);
+    for (const [a, b] of segs) {
+      const pts = segmentCircleIntersection(a, b, circle.center, circle.radius);
+      for (const p of pts) addAngle(p);
+    }
+
+    // Other circles
+    if (other.type === "circle") {
+      const pts = circleCircleIntersection(circle.center, circle.radius, other.center, other.radius);
+      for (const p of pts) addAngle(p);
+    }
+
+    // Endpoints that lie on the circle (within tolerance)
+    const endpoints = getEntityEndpoints(other);
+    for (const ep of endpoints) {
+      const d = distance(ep, circle.center);
+      if (Math.abs(d - circle.radius) < 0.05) {
+        addAngle(ep);
+      }
+    }
+  }
+
+  angles.sort((a, b) => a - b);
+  return angles;
+}
+
+/**
+ * Circle-circle intersection. Returns 0, 1, or 2 intersection points.
+ */
+function circleCircleIntersection(
+  c1: Point2D, r1: number,
+  c2: Point2D, r2: number
+): Point2D[] {
+  const d = distance(c1, c2);
+  if (d < 1e-10 || d > r1 + r2 || d < Math.abs(r1 - r2)) return [];
+  const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d);
+  const h2 = r1 * r1 - a * a;
+  if (h2 < 0) return [];
+  const h = Math.sqrt(h2);
+  const mx = c1.x + a * (c2.x - c1.x) / d;
+  const my = c1.y + a * (c2.y - c1.y) / d;
+  const px = h * (c2.y - c1.y) / d;
+  const py = h * (c2.x - c1.x) / d;
+  if (h < 1e-10) return [{ x: mx, y: my }];
+  return [
+    { x: mx + px, y: my - py },
+    { x: mx - px, y: my + py },
+  ];
+}
+
+/**
+ * Trim a circle at the nearest intersections surrounding the click point.
+ * Returns an arc (the remaining part) or null if no intersections.
+ */
+function trimCircleAtPoint(
+  circle: import("@/types/cad").CircleEntity,
+  clickPt: Point2D,
+  allEntities: import("@/types/cad").CadEntity[]
+): import("@/types/cad").CadEntity[] | null {
+  const angles = findCircleTrimAngles(circle, allEntities);
+  if (angles.length < 2) return null;
+
+  const clickAngle = Math.atan2(clickPt.y - circle.center.y, clickPt.x - circle.center.x);
+
+  // Find the two boundary angles surrounding the click angle
+  let beforeIdx = -1;
+  let afterIdx = -1;
+  for (let i = 0; i < angles.length; i++) {
+    if (angles[i] <= clickAngle) beforeIdx = i;
+    if (angles[i] > clickAngle && afterIdx === -1) afterIdx = i;
+  }
+  // Wrap around: if click is before all angles or after all angles
+  if (beforeIdx === -1) beforeIdx = angles.length - 1;
+  if (afterIdx === -1) afterIdx = 0;
+
+  // The kept arc goes from afterIdx angle to beforeIdx angle (skipping the clicked region)
+  const arcStart = angles[afterIdx];
+  const arcEnd = angles[beforeIdx];
+
+  // If they're the same index something is wrong
+  if (afterIdx === beforeIdx) return null;
+
+  const base = { stroke: circle.stroke, strokeWidth: circle.strokeWidth, locked: circle.locked };
+  return [{
+    ...base,
+    id: generateId(),
+    type: "arc" as const,
+    center: circle.center,
+    radius: circle.radius,
+    startAngle: arcStart,
+    endAngle: arcEnd,
+  }];
+}
+
+/**
+ * Trim any entity that has segments (line, rectangle, polyline, circle).
  * For rectangles/polylines, finds the clicked segment, trims it,
  * and returns remaining segments as individual lines.
  */
@@ -353,6 +503,10 @@ export function trimEntityAtPoint(
 ): import("@/types/cad").CadEntity[] | null {
   if (entity.type === "line") {
     return trimLineAtPoint(entity, clickPt, allEntities);
+  }
+
+  if (entity.type === "circle") {
+    return trimCircleAtPoint(entity, clickPt, allEntities);
   }
 
   const segments = getEntitySegments(entity);
@@ -394,6 +548,43 @@ export function trimEntityAtPoint(
 }
 
 /**
+ * Preview trim for a circle — returns the arc segment that would be removed.
+ */
+function getCircleTrimPreview(
+  circle: import("@/types/cad").CircleEntity,
+  clickPt: Point2D,
+  allEntities: import("@/types/cad").CadEntity[]
+): { removedSegment: [Point2D, Point2D]; entityId: string; removedArc: { center: Point2D; radius: number; startAngle: number; endAngle: number } } | null {
+  const angles = findCircleTrimAngles(circle, allEntities);
+  if (angles.length < 2) return null;
+
+  const clickAngle = Math.atan2(clickPt.y - circle.center.y, clickPt.x - circle.center.x);
+
+  let beforeIdx = -1;
+  let afterIdx = -1;
+  for (let i = 0; i < angles.length; i++) {
+    if (angles[i] <= clickAngle) beforeIdx = i;
+    if (angles[i] > clickAngle && afterIdx === -1) afterIdx = i;
+  }
+  if (beforeIdx === -1) beforeIdx = angles.length - 1;
+  if (afterIdx === -1) afterIdx = 0;
+  if (afterIdx === beforeIdx) return null;
+
+  // The removed arc goes from beforeIdx to afterIdx (the clicked region)
+  const startAngle = angles[beforeIdx];
+  const endAngle = angles[afterIdx];
+
+  const startPt = { x: circle.center.x + circle.radius * Math.cos(startAngle), y: circle.center.y + circle.radius * Math.sin(startAngle) };
+  const endPt = { x: circle.center.x + circle.radius * Math.cos(endAngle), y: circle.center.y + circle.radius * Math.sin(endAngle) };
+
+  return {
+    removedSegment: [startPt, endPt],
+    entityId: circle.id,
+    removedArc: { center: circle.center, radius: circle.radius, startAngle, endAngle },
+  };
+}
+
+/**
  * Preview what a trim operation would remove.
  * Returns the segment that would be deleted (between the two nearest boundaries
  * surrounding the click point), plus the entity id for hover highlight.
@@ -402,7 +593,11 @@ export function getTrimPreview(
   entity: import("@/types/cad").CadEntity,
   clickPt: Point2D,
   allEntities: import("@/types/cad").CadEntity[]
-): { removedSegment: [Point2D, Point2D]; entityId: string } | null {
+): { removedSegment: [Point2D, Point2D]; entityId: string; removedArc?: { center: Point2D; radius: number; startAngle: number; endAngle: number } } | null {
+  if (entity.type === "circle") {
+    return getCircleTrimPreview(entity, clickPt, allEntities);
+  }
+
   const segments = getEntitySegments(entity);
   if (segments.length === 0) return null;
 
