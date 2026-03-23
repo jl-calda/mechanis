@@ -99,6 +99,11 @@ export function CadCanvas({ state, dispatch }: Props) {
   } | null>(null);
   const [filletHoverEdge, setFilletHoverEdge] = useState<FilletEdge | null>(null);
 
+  // Region hover preview (throttled — manualPickRegion is expensive)
+  const [regionHover, setRegionHover] = useState<{ boundary: Point2D[]; area: number; isToggle: boolean } | null>(null);
+  const regionHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const regionHoverPending = useRef<Point2D | null>(null);
+
   // Pan state
   const isPanning = useRef(false);
   const panStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
@@ -727,8 +732,45 @@ export function CadCanvas({ state, dispatch }: Props) {
         if (filletPreview) setFilletPreview(null);
         if (filletFirstEdge) setFilletFirstEdge(null);
       }
+
+      // Region hover preview
+      if (activeTool === "region-pick") {
+        // Check if hovering an existing region (would toggle) — cheap check
+        let hoveredExisting: { boundary: Point2D[]; area: number } | null = null;
+        for (const r of regions) {
+          if (pointInPolygon(world, r.boundary)) {
+            if (!hoveredExisting || r.area < hoveredExisting.area) {
+              hoveredExisting = { boundary: r.boundary, area: r.area };
+            }
+          }
+        }
+        if (hoveredExisting) {
+          if (regionHoverTimer.current) { clearTimeout(regionHoverTimer.current); regionHoverTimer.current = null; }
+          setRegionHover({ boundary: hoveredExisting.boundary, area: hoveredExisting.area, isToggle: true });
+        } else {
+          // Throttle expensive manualPickRegion — debounce 60ms
+          regionHoverPending.current = world;
+          if (!regionHoverTimer.current) {
+            regionHoverTimer.current = setTimeout(() => {
+              regionHoverTimer.current = null;
+              const pt = regionHoverPending.current;
+              if (pt) {
+                const preview = manualPickRegion(pt, entities);
+                if (preview) {
+                  setRegionHover({ boundary: preview.boundary, area: preview.area, isToggle: false });
+                } else {
+                  setRegionHover(null);
+                }
+              }
+            }, 60);
+          }
+        }
+      } else if (regionHover) {
+        setRegionHover(null);
+        if (regionHoverTimer.current) { clearTimeout(regionHoverTimer.current); regionHoverTimer.current = null; }
+      }
     },
-    [screenToWorld, doSnap, viewport, dispatch, grid, entities, activeTool, hitTest, trimHover, filletFirstEdge, filletRadius, filletHoverEdge, filletPreview]
+    [screenToWorld, doSnap, viewport, dispatch, grid, entities, activeTool, hitTest, trimHover, filletFirstEdge, filletRadius, filletHoverEdge, filletPreview, regions, regionHover]
   );
 
   const handlePointerUp = useCallback(() => {
@@ -1047,6 +1089,19 @@ export function CadCanvas({ state, dispatch }: Props) {
 
         {/* Regions */}
         <CadRegionOverlay regions={regions} />
+
+        {/* Region hover preview */}
+        {regionHover && (
+          <path
+            d={regionHover.boundary.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ") + " Z"}
+            fill={regionHover.isToggle ? "#f43f5e" : "var(--primary)"}
+            fillOpacity={0.15}
+            stroke={regionHover.isToggle ? "#f43f5e" : "var(--primary)"}
+            strokeWidth={0.06}
+            strokeDasharray="0.12 0.06"
+            style={{ pointerEvents: "none" }}
+          />
+        )}
 
         {/* Entities */}
         {entities.map((e) => (
