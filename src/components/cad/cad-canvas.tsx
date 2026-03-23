@@ -378,9 +378,28 @@ export function CadCanvas({ state, dispatch }: Props) {
         return;
       }
       if (activeTool === "dimension") {
-        if (!drawState) { dispatch({ type: "SET_DRAW_STATE", points: [pt] }); }
-        else {
-          dispatch({ type: "ADD_ENTITY", entity: { id: generateId(), type: "dimension", startPt: drawState.points[0], endPt: pt, offset: 0.8, labelOverride: null, stroke: "", strokeWidth: 1, locked: false } });
+        if (!drawState) {
+          // Click 1: first node
+          dispatch({ type: "SET_DRAW_STATE", points: [pt] });
+        } else if (drawState.points.length === 1) {
+          // Click 2: second node
+          dispatch({ type: "SET_DRAW_STATE", points: [...drawState.points, pt] });
+        } else if (drawState.points.length === 2) {
+          // Click 3: set offset by computing perpendicular distance from click to the line between pt1-pt2
+          const p1 = drawState.points[0];
+          const p2 = drawState.points[1];
+          const dx = p2.x - p1.x;
+          const dy = p2.y - p1.y;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          let offset = 0.8;
+          if (len > 0.001) {
+            // Perpendicular distance from world click to line p1-p2 (signed)
+            const nx = -dy / len;
+            const ny = dx / len;
+            offset = (world.x - p1.x) * nx + (world.y - p1.y) * ny;
+            if (Math.abs(offset) < 0.2) offset = offset >= 0 ? 0.5 : -0.5;
+          }
+          dispatch({ type: "ADD_ENTITY", entity: { id: generateId(), type: "dimension", startPt: p1, endPt: p2, offset, labelOverride: null, stroke: "", strokeWidth: 1, locked: false } });
           dispatch({ type: "SET_DRAW_STATE", points: null });
         }
         return;
@@ -549,20 +568,14 @@ export function CadCanvas({ state, dispatch }: Props) {
     if (isNaN(val) || val <= 0) { setShowTooltipInput(false); setTooltipInput(""); return; }
     const start = drawState.points[0];
 
-    if (activeTool === "line" || activeTool === "dimension") {
-      // Use cursor direction to determine endpoint
+    if (activeTool === "line") {
       const dx = cursorPos.x - start.x;
       const dy = cursorPos.y - start.y;
       const len = Math.sqrt(dx * dx + dy * dy);
       const ux = len > 0 ? dx / len : 1;
       const uy = len > 0 ? dy / len : 0;
       const endPt = { x: start.x + ux * val, y: start.y + uy * val };
-
-      if (activeTool === "line") {
-        dispatch({ type: "ADD_ENTITY", entity: { id: generateId(), type: "line", start, end: endPt, thickness: 0, stroke: "", strokeWidth: 1, locked: false } });
-      } else {
-        dispatch({ type: "ADD_ENTITY", entity: { id: generateId(), type: "dimension", startPt: start, endPt, offset: 0.8, labelOverride: null, stroke: "", strokeWidth: 1, locked: false } });
-      }
+      dispatch({ type: "ADD_ENTITY", entity: { id: generateId(), type: "line", start, end: endPt, thickness: 0, stroke: "", strokeWidth: 1, locked: false } });
       dispatch({ type: "SET_DRAW_STATE", points: null });
     } else if (activeTool === "rectangle") {
       // Parse as "w,h" or single value for square
@@ -741,12 +754,43 @@ export function CadCanvas({ state, dispatch }: Props) {
             {activeTool === "ellipse" && drawState.points.length === 1 && (
               <ellipse cx={drawState.points[0].x} cy={drawState.points[0].y} rx={Math.abs(previewPt.x - drawState.points[0].x)} ry={Math.abs(previewPt.y - drawState.points[0].y)} fill="var(--primary)" fillOpacity={0.05} stroke="var(--primary)" strokeWidth={0.06} strokeDasharray="0.12 0.08" />
             )}
+            {/* Dimension: step 1 — line from node 1 to cursor */}
             {activeTool === "dimension" && drawState.points.length === 1 && (
               <>
                 <line x1={drawState.points[0].x} y1={drawState.points[0].y} x2={previewPt.x} y2={previewPt.y} stroke="var(--svg-dim)" strokeWidth={0.03} strokeDasharray="0.1 0.06" />
                 <text x={(drawState.points[0].x + previewPt.x) / 2} y={(drawState.points[0].y + previewPt.y) / 2 - 0.3} fill="var(--svg-dim)" fontSize={0.3} textAnchor="middle" fontFamily="var(--font-mono)">{distance(drawState.points[0], previewPt).toFixed(2)}</text>
               </>
             )}
+            {/* Dimension: step 2 — show dimension line preview with offset from cursor */}
+            {activeTool === "dimension" && drawState.points.length === 2 && (() => {
+              const p1 = drawState.points[0];
+              const p2 = drawState.points[1];
+              const dx = p2.x - p1.x;
+              const dy = p2.y - p1.y;
+              const len = distance(p1, p2);
+              if (len < 0.001) return null;
+              const nx = -dy / len;
+              const ny = dx / len;
+              const off = (previewPt.x - p1.x) * nx + (previewPt.y - p1.y) * ny;
+              const ds = { x: p1.x + nx * off, y: p1.y + ny * off };
+              const de = { x: p2.x + nx * off, y: p2.y + ny * off };
+              const mx = (ds.x + de.x) / 2;
+              const my = (ds.y + de.y) / 2;
+              return (
+                <>
+                  {/* Extension lines */}
+                  <line x1={p1.x} y1={p1.y} x2={ds.x} y2={ds.y} stroke="var(--svg-dim)" strokeWidth={0.02} strokeDasharray="0.08 0.04" />
+                  <line x1={p2.x} y1={p2.y} x2={de.x} y2={de.y} stroke="var(--svg-dim)" strokeWidth={0.02} strokeDasharray="0.08 0.04" />
+                  {/* Dimension line */}
+                  <line x1={ds.x} y1={ds.y} x2={de.x} y2={de.y} stroke="var(--svg-dim)" strokeWidth={0.03} />
+                  {/* Label */}
+                  <text x={mx} y={my - 0.15} fill="var(--svg-dim)" fontSize={0.3} textAnchor="middle" fontFamily="var(--font-mono)">{len.toFixed(2)}</text>
+                  {/* Node markers */}
+                  <circle cx={p1.x} cy={p1.y} r={0.1} fill="var(--primary)" fillOpacity={0.5} />
+                  <circle cx={p2.x} cy={p2.y} r={0.1} fill="var(--primary)" fillOpacity={0.5} />
+                </>
+              );
+            })()}
           </g>
         )}
 
@@ -782,10 +826,27 @@ export function CadCanvas({ state, dispatch }: Props) {
           {/* Measurement when drawing */}
           {drawState && drawState.points.length >= 1 && previewPt && activeTool !== "select" && (() => {
             const start = drawState.points[0];
-            if (activeTool === "line" || activeTool === "dimension") {
+            if (activeTool === "line") {
               const d = distance(start, previewPt);
               const ang = Math.atan2(previewPt.y - start.y, previewPt.x - start.x) * 180 / Math.PI;
               return <><span className="text-border mx-1">|</span><span className="text-primary">{d.toFixed(2)}</span> <span className="text-muted">@ {ang.toFixed(1)}°</span> <span className="text-muted/40 ml-1">Tab</span></>;
+            }
+            if (activeTool === "dimension") {
+              if (drawState.points.length === 1) {
+                const d = distance(start, previewPt);
+                return <><span className="text-border mx-1">|</span><span className="text-primary">{d.toFixed(2)}</span> <span className="text-muted/40 ml-1">node 2</span></>;
+              }
+              if (drawState.points.length === 2) {
+                const p1 = drawState.points[0];
+                const p2 = drawState.points[1];
+                const d = distance(p1, p2);
+                const dx = p2.x - p1.x, dy = p2.y - p1.y;
+                const len = Math.sqrt(dx * dx + dy * dy);
+                const nx = len > 0 ? -dy / len : 0, ny = len > 0 ? dx / len : 0;
+                const off = (previewPt.x - p1.x) * nx + (previewPt.y - p1.y) * ny;
+                return <><span className="text-border mx-1">|</span><span className="text-primary">{d.toFixed(2)}</span> <span className="text-muted">off={off.toFixed(2)}</span></>;
+              }
+              return null;
             }
             if (activeTool === "rectangle") {
               const w = Math.abs(previewPt.x - start.x);
@@ -854,7 +915,7 @@ export function CadCanvas({ state, dispatch }: Props) {
           : activeTool === "select"
             ? "Click to select · Drag to move · Drag handle to resize · Right-click handle to lock/unlock"
             : activeTool === "dimension"
-              ? drawState ? "Click second point to place dimension" : "Click first point for dimension"
+              ? !drawState ? "Click first node" : drawState.points.length === 1 ? "Click second node" : "Click to set offset distance"
               : activeTool === "trim"
                 ? "Click a line, rectangle, or polyline to trim at intersections"
                 : activeTool === "region-pick"
