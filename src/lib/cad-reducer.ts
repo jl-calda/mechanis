@@ -57,6 +57,7 @@ function pushHistory(state: CadState, entities: CadEntity[]): CadState {
     entities,
     history: newHistory,
     historyIndex: newHistory.length - 1,
+    regions: [], // invalidate regions when geometry changes
   };
 }
 
