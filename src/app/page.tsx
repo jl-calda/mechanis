@@ -7,7 +7,7 @@ import { useAuth } from "@/components/auth-provider";
 const tools = [
   {
     href: "/profiles",
-    title: "Profile Drawer",
+    title: "Section Builder",
     description:
       "View steel cross-sections with annotated dimensions. Standard AISC shapes or draw custom sections with CAD.",
     icon: Ruler,

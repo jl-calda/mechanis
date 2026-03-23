@@ -26,7 +26,7 @@ export default function ProfilesPage() {
       <div className="mb-5 flex items-start justify-between">
         <div>
           <h1 className="text-lg font-medium tracking-tight text-foreground">
-            Profile Drawer
+            Section Builder
           </h1>
           <p className="mt-0.5 text-xs text-muted">
             View steel cross-sections with annotated dimensions and section properties.

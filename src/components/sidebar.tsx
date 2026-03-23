@@ -19,7 +19,7 @@ import { useAuth } from "./auth-provider";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/profiles", label: "Profile Drawer", icon: Ruler },
+  { href: "/profiles", label: "Section Builder", icon: Ruler },
   { href: "/bolts", label: "Bolt Calculator", icon: CircleDot },
   { href: "/welds", label: "Weld Calculator", icon: Zap },
   { href: "/materials", label: "Materials", icon: Database },
