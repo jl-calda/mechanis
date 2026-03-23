@@ -10,9 +10,12 @@ interface Props {
 
 const SEL_COLOR = "var(--primary)";
 const LOCK_COLOR = "var(--danger)";
-const STROKE_W = 0.08;
-const SEL_STROKE_W = 0.1;
-const HANDLE_R = 0.12;
+const ENTITY_COLOR = "#e2e2e2";
+const ENTITY_COLOR_DARK = "var(--svg-stroke)";
+const STROKE_W = 0.12;
+const SEL_STROKE_W = 0.14;
+const HANDLE_R = 0.16;
+const NODE_R = 0.1;
 
 function Handle({ x, y, index, entityId, isLocked }: { x: number; y: number; index: number; entityId: string; isLocked: boolean }) {
   return isLocked ? (
@@ -23,32 +26,49 @@ function Handle({ x, y, index, entityId, isLocked }: { x: number; y: number; ind
         width={HANDLE_R * 2}
         height={HANDLE_R * 2}
         fill={LOCK_COLOR}
-        stroke="none"
+        stroke="white"
+        strokeWidth={0.03}
         data-handle-index={index}
         data-handle-entity={entityId}
         style={{ cursor: "not-allowed" }}
       />
-      {/* Lock X indicator */}
-      <line x1={x - HANDLE_R * 0.5} y1={y - HANDLE_R * 0.5} x2={x + HANDLE_R * 0.5} y2={y + HANDLE_R * 0.5} stroke="white" strokeWidth={0.03} />
-      <line x1={x + HANDLE_R * 0.5} y1={y - HANDLE_R * 0.5} x2={x - HANDLE_R * 0.5} y2={y + HANDLE_R * 0.5} stroke="white" strokeWidth={0.03} />
+      <line x1={x - HANDLE_R * 0.5} y1={y - HANDLE_R * 0.5} x2={x + HANDLE_R * 0.5} y2={y + HANDLE_R * 0.5} stroke="white" strokeWidth={0.04} />
+      <line x1={x + HANDLE_R * 0.5} y1={y - HANDLE_R * 0.5} x2={x - HANDLE_R * 0.5} y2={y + HANDLE_R * 0.5} stroke="white" strokeWidth={0.04} />
     </g>
   ) : (
-    <rect
-      x={x - HANDLE_R}
-      y={y - HANDLE_R}
-      width={HANDLE_R * 2}
-      height={HANDLE_R * 2}
-      fill={SEL_COLOR}
+    <g>
+      <rect
+        x={x - HANDLE_R}
+        y={y - HANDLE_R}
+        width={HANDLE_R * 2}
+        height={HANDLE_R * 2}
+        fill={SEL_COLOR}
+        stroke="white"
+        strokeWidth={0.03}
+        data-handle-index={index}
+        data-handle-entity={entityId}
+        style={{ cursor: "crosshair" }}
+      />
+    </g>
+  );
+}
+
+/** Small dot shown at nodes even when not selected */
+function NodeDot({ x, y }: { x: number; y: number }) {
+  return (
+    <circle
+      cx={x}
+      cy={y}
+      r={NODE_R}
+      fill={ENTITY_COLOR_DARK}
       stroke="none"
-      data-handle-index={index}
-      data-handle-entity={entityId}
-      style={{ cursor: "crosshair" }}
+      opacity={0.7}
     />
   );
 }
 
 export function CadEntityRenderer({ entity, selected }: Props) {
-  const stroke = selected ? SEL_COLOR : "var(--svg-stroke)";
+  const stroke = selected ? SEL_COLOR : ENTITY_COLOR_DARK;
   const sw = selected ? SEL_STROKE_W : STROKE_W;
   const lh = entity.lockedHandles ?? [];
   const isHL = (i: number) => lh.includes(i);
@@ -61,9 +81,13 @@ export function CadEntityRenderer({ entity, selected }: Props) {
             cx={entity.position.x}
             cy={entity.position.y}
             r={0.2}
-            fill={selected ? SEL_COLOR : "var(--svg-dim)"}
-            stroke="none"
+            fill={selected ? SEL_COLOR : ENTITY_COLOR_DARK}
+            stroke="white"
+            strokeWidth={0.03}
           />
+          {/* Crosshair */}
+          <line x1={entity.position.x - 0.3} y1={entity.position.y} x2={entity.position.x + 0.3} y2={entity.position.y} stroke={selected ? SEL_COLOR : ENTITY_COLOR_DARK} strokeWidth={0.04} opacity={0.5} />
+          <line x1={entity.position.x} y1={entity.position.y - 0.3} x2={entity.position.x} y2={entity.position.y + 0.3} stroke={selected ? SEL_COLOR : ENTITY_COLOR_DARK} strokeWidth={0.04} opacity={0.5} />
           {selected && (
             <circle
               cx={entity.position.x}
@@ -71,7 +95,7 @@ export function CadEntityRenderer({ entity, selected }: Props) {
               r={0.4}
               fill="none"
               stroke={SEL_COLOR}
-              strokeWidth={0.04}
+              strokeWidth={0.05}
             />
           )}
         </g>
@@ -88,8 +112,11 @@ export function CadEntityRenderer({ entity, selected }: Props) {
             stroke={stroke}
             strokeWidth={entity.thickness > 0 ? Math.max(entity.thickness, sw) : sw}
             strokeLinecap="round"
-            opacity={entity.thickness > 0 ? 0.7 : 1}
+            opacity={entity.thickness > 0 ? 0.8 : 1}
           />
+          {/* Always show endpoint nodes */}
+          <NodeDot x={entity.start.x} y={entity.start.y} />
+          <NodeDot x={entity.end.x} y={entity.end.y} />
           {selected && (
             <>
               <Handle x={entity.start.x} y={entity.start.y} index={0} entityId={entity.id} isLocked={isHL(0)} />
@@ -108,10 +135,16 @@ export function CadEntityRenderer({ entity, selected }: Props) {
             width={entity.width}
             height={entity.height}
             fill="var(--svg-fill)"
-            fillOpacity={0.12}
+            fillOpacity={0.15}
             stroke={stroke}
             strokeWidth={sw}
+            strokeLinejoin="round"
           />
+          {/* Corner nodes */}
+          <NodeDot x={entity.origin.x} y={entity.origin.y} />
+          <NodeDot x={entity.origin.x + entity.width} y={entity.origin.y} />
+          <NodeDot x={entity.origin.x + entity.width} y={entity.origin.y + entity.height} />
+          <NodeDot x={entity.origin.x} y={entity.origin.y + entity.height} />
           {selected && (
             <>
               <Handle x={entity.origin.x} y={entity.origin.y} index={0} entityId={entity.id} isLocked={isHL(0)} />
@@ -132,13 +165,15 @@ export function CadEntityRenderer({ entity, selected }: Props) {
           <path
             d={entity.closed ? d + " Z" : d}
             fill={entity.closed ? "var(--svg-fill)" : "none"}
-            fillOpacity={entity.closed ? 0.12 : 0}
+            fillOpacity={entity.closed ? 0.15 : 0}
             stroke={stroke}
             strokeWidth={entity.thickness > 0 ? Math.max(entity.thickness, sw) : sw}
             strokeLinecap="round"
             strokeLinejoin="round"
-            opacity={entity.thickness > 0 ? 0.7 : 1}
+            opacity={entity.thickness > 0 ? 0.8 : 1}
           />
+          {/* Vertex nodes */}
+          {entity.points.map((p, i) => <NodeDot key={`n${i}`} x={p.x} y={p.y} />)}
           {selected &&
             entity.points.map((p, i) => <Handle key={i} x={p.x} y={p.y} index={i} entityId={entity.id} isLocked={isHL(i)} />)}
         </g>
@@ -153,10 +188,16 @@ export function CadEntityRenderer({ entity, selected }: Props) {
             cy={entity.center.y}
             r={entity.radius}
             fill="var(--svg-fill)"
-            fillOpacity={0.12}
+            fillOpacity={0.15}
             stroke={stroke}
             strokeWidth={sw}
           />
+          {/* Center + cardinal nodes */}
+          <NodeDot x={entity.center.x} y={entity.center.y} />
+          <NodeDot x={entity.center.x + entity.radius} y={entity.center.y} />
+          <NodeDot x={entity.center.x - entity.radius} y={entity.center.y} />
+          <NodeDot x={entity.center.x} y={entity.center.y + entity.radius} />
+          <NodeDot x={entity.center.x} y={entity.center.y - entity.radius} />
           {selected && (
             <>
               <Handle x={entity.center.x} y={entity.center.y} index={0} entityId={entity.id} isLocked={isHL(0)} />
@@ -176,10 +217,16 @@ export function CadEntityRenderer({ entity, selected }: Props) {
             rx={entity.rx}
             ry={entity.ry}
             fill="var(--svg-fill)"
-            fillOpacity={0.12}
+            fillOpacity={0.15}
             stroke={stroke}
             strokeWidth={sw}
           />
+          {/* Center + axis nodes */}
+          <NodeDot x={entity.center.x} y={entity.center.y} />
+          <NodeDot x={entity.center.x + entity.rx} y={entity.center.y} />
+          <NodeDot x={entity.center.x - entity.rx} y={entity.center.y} />
+          <NodeDot x={entity.center.x} y={entity.center.y + entity.ry} />
+          <NodeDot x={entity.center.x} y={entity.center.y - entity.ry} />
           {selected && (
             <>
               <Handle x={entity.center.x} y={entity.center.y} index={0} entityId={entity.id} isLocked={isHL(0)} />
@@ -197,99 +244,36 @@ export function CadEntityRenderer({ entity, selected }: Props) {
       const len = distance(startPt, endPt);
       if (len < 0.001) return null;
 
-      // Perpendicular direction (normalized)
       const px = -dy / len;
       const py = dx / len;
       const off = offset;
 
-      // Offset start/end points (where the dimension line sits)
       const ds = { x: startPt.x + px * off, y: startPt.y + py * off };
       const de = { x: endPt.x + px * off, y: endPt.y + py * off };
-
-      // Midpoint of dimension line for label
       const mx = (ds.x + de.x) / 2;
       const my = (ds.y + de.y) / 2;
 
-      // Label
       const label = labelOverride ?? len.toFixed(2);
-
-      // Arrow size
       const arrowLen = Math.min(0.2, len * 0.15);
       const arrowW = arrowLen * 0.4;
-
-      // Unit direction along dimension line
       const ux = dx / len;
       const uy = dy / len;
-
-      // Extension line gap
       const gap = off > 0 ? 0.1 : -0.1;
 
       const dimColor = selected ? SEL_COLOR : "var(--svg-dim)";
 
       return (
         <g>
-          {/* Extension lines */}
-          <line
-            x1={startPt.x + px * gap}
-            y1={startPt.y + py * gap}
-            x2={ds.x + px * 0.15}
-            y2={ds.y + py * 0.15}
-            stroke={dimColor}
-            strokeWidth={0.025}
-          />
-          <line
-            x1={endPt.x + px * gap}
-            y1={endPt.y + py * gap}
-            x2={de.x + px * 0.15}
-            y2={de.y + py * 0.15}
-            stroke={dimColor}
-            strokeWidth={0.025}
-          />
-
-          {/* Dimension line */}
-          <line
-            x1={ds.x}
-            y1={ds.y}
-            x2={de.x}
-            y2={de.y}
-            stroke={dimColor}
-            strokeWidth={0.03}
-          />
-
-          {/* Arrows at start */}
-          <polygon
-            points={`${ds.x},${ds.y} ${ds.x + ux * arrowLen + px * arrowW},${ds.y + uy * arrowLen + py * arrowW} ${ds.x + ux * arrowLen - px * arrowW},${ds.y + uy * arrowLen - py * arrowW}`}
-            fill={dimColor}
-          />
-          {/* Arrows at end */}
-          <polygon
-            points={`${de.x},${de.y} ${de.x - ux * arrowLen + px * arrowW},${de.y - uy * arrowLen + py * arrowW} ${de.x - ux * arrowLen - px * arrowW},${de.y - uy * arrowLen - py * arrowW}`}
-            fill={dimColor}
-          />
-
-          {/* Label background */}
-          <rect
-            x={mx - label.length * 0.11}
-            y={my - 0.22}
-            width={label.length * 0.22}
-            height={0.4}
-            fill="var(--surface)"
-            rx={0.05}
-          />
-
-          {/* Label text */}
-          <text
-            x={mx}
-            y={my + 0.08}
-            fill={dimColor}
-            fontSize={0.32}
-            textAnchor="middle"
-            fontFamily="var(--font-mono)"
-            data-dimension-id={entity.id}
-          >
-            {label}
-          </text>
-
+          <line x1={startPt.x + px * gap} y1={startPt.y + py * gap} x2={ds.x + px * 0.15} y2={ds.y + py * 0.15} stroke={dimColor} strokeWidth={0.025} />
+          <line x1={endPt.x + px * gap} y1={endPt.y + py * gap} x2={de.x + px * 0.15} y2={de.y + py * 0.15} stroke={dimColor} strokeWidth={0.025} />
+          <line x1={ds.x} y1={ds.y} x2={de.x} y2={de.y} stroke={dimColor} strokeWidth={0.03} />
+          <polygon points={`${ds.x},${ds.y} ${ds.x + ux * arrowLen + px * arrowW},${ds.y + uy * arrowLen + py * arrowW} ${ds.x + ux * arrowLen - px * arrowW},${ds.y + uy * arrowLen - py * arrowW}`} fill={dimColor} />
+          <polygon points={`${de.x},${de.y} ${de.x - ux * arrowLen + px * arrowW},${de.y - uy * arrowLen + py * arrowW} ${de.x - ux * arrowLen - px * arrowW},${de.y - uy * arrowLen - py * arrowW}`} fill={dimColor} />
+          <rect x={mx - label.length * 0.11} y={my - 0.22} width={label.length * 0.22} height={0.4} fill="var(--surface)" rx={0.05} />
+          <text x={mx} y={my + 0.08} fill={dimColor} fontSize={0.32} textAnchor="middle" fontFamily="var(--font-mono)" data-dimension-id={entity.id}>{label}</text>
+          {/* Node dots at measurement points */}
+          <NodeDot x={startPt.x} y={startPt.y} />
+          <NodeDot x={endPt.x} y={endPt.y} />
           {selected && (
             <>
               <Handle x={startPt.x} y={startPt.y} index={0} entityId={entity.id} isLocked={isHL(0)} />
