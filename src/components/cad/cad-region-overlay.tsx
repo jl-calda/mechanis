@@ -53,16 +53,29 @@ export function CadRegionOverlay({ regions }: Props) {
               stroke={color}
               strokeWidth={0.02}
             />
+            {/* Background for label */}
+            <rect
+              x={region.centroid.x - (isAdd ? "+" : "−").length * 0.05 - region.area.toFixed(2).length * 0.1 - 0.3}
+              y={region.centroid.y + 0.28}
+              width={region.area.toFixed(2).length * 0.2 + 1.0}
+              height={0.45}
+              rx={0.08}
+              fill={isAdd ? "var(--surface)" : "var(--surface)"}
+              fillOpacity={0.85}
+              stroke={color}
+              strokeWidth={0.02}
+            />
             {/* Sign + Area label */}
             <text
               x={region.centroid.x}
-              y={region.centroid.y + 0.5}
+              y={region.centroid.y + 0.6}
               fill={color}
               fontSize={0.32}
+              fontWeight="bold"
               textAnchor="middle"
               fontFamily="var(--font-mono)"
             >
-              {isAdd ? "+" : "−"}{region.area.toFixed(2)}
+              {isAdd ? "+" : "−"}{region.area.toFixed(2)} in²
             </text>
           </g>
         );

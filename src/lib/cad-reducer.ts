@@ -87,6 +87,7 @@ export function cadReducer(state: CadState, action: CadAction): CadState {
       return {
         ...pushHistory(state, newEntities),
         selectedIds: state.selectedIds.filter((id) => !idSet.has(id)),
+        regions: [],
       };
     }
 
@@ -253,6 +254,7 @@ export function cadReducer(state: CadState, action: CadAction): CadState {
       return {
         ...pushHistory(state, newEntities),
         selectedIds: state.selectedIds.filter((sid) => sid !== action.id),
+        regions: [],
       };
     }
 
@@ -263,6 +265,7 @@ export function cadReducer(state: CadState, action: CadAction): CadState {
       return {
         ...pushHistory(state, newEntities),
         selectedIds: state.selectedIds.filter((sid) => !removeSet.has(sid)),
+        regions: [],
       };
     }
 
